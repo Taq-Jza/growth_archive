@@ -28,6 +28,25 @@
   {% endif %}
 </div>
 
+{# 先选范围再生成：默认「全部」会把所有课程混在一张图上，章节名互相撞，谁也不是谁的先修 #}
+{% if folders %}
+<div class="mt-4 flex flex-wrap items-center gap-1.5 fade-up" style="--d:.05s">
+  <span class="mr-1 text-[11.5px] text-[var(--ink-4)]">按课程看</span>
+  <a href="/kg?kind={{ kind }}"
+     class="chip rounded-full px-2.5 py-1 text-[11.5px]
+            {% if not tag %}text-white shadow-sm{% else %}border border-[rgba(26,29,25,.08)] bg-white text-[var(--ink-2)]{% endif %}"
+     {% if not tag %}style="background:var(--brand)"{% endif %}>全部</a>
+  {% for f in folders %}
+  <a href="/kg?kind={{ kind }}&tag={{ f.name|urlencode }}"
+     class="chip rounded-full px-2.5 py-1 text-[11.5px]
+            {% if tag == f.name %}text-white shadow-sm{% else %}border border-[rgba(26,29,25,.08)] bg-white text-[var(--ink-2)]{% endif %}"
+     {% if tag == f.name %}style="background:var(--brand)"{% endif %}>
+    {{ f.name }} <span class="{% if tag == f.name %}text-white/70{% else %}text-[var(--ink-4)]{% endif %}">{{ f.n }}</span>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
 {% if built %}
 <div class="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-sm text-emerald-800 fade-up">
   已生成：{{ built.ok }} 条记录完成分章{% if built.failed %}，{{ built.failed }} 条未能识别（可稍后重试）{% endif %}。

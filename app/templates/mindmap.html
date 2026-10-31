@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}思维导图 · {{ doc.title }}{% endblock %}
+{% block content %}
+
+<div class="flex flex-wrap items-end justify-between gap-3 reveal" data-anim="left">
+  <div class="min-w-0">
+    <a href="/doc/{{ doc.id }}" class="group inline-flex items-center gap-1 text-xs text-[var(--ink-3)] transition-colors hover:text-[var(--brand-deep)]">
+      <span class="arrow inline-block rotate-180 group-hover:-translate-x-1">→</span>
+      回到记录
+    </a>
+    <h1 class="page-title mt-2">思维导图</h1>
+    <p class="mt-1 text-[13px] text-[var(--ink-3)]">
+      {{ doc.title }}
+      {% if tree %}<span class="text-[var(--ink-4)]"> · {{ tree.children|length if tree.children else 0 }} 个主题</span>{% endif %}
+    </p>
+  </div>
+  <div class="flex shrink-0 items-center gap-2">
+    <a href="/doc/{{ doc.id }}" class="btn btn-ghost">看原文</a>
+    <a href="/mindmap/{{ doc.id }}?rebuild=1" class="btn btn-primary">
+      {% if tree %}重新生成{% else %}开始生成{% endif %}
+    </a>
+  </div>
+</div>
+
+{% if error %}
+<div class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-sm text-amber-900 fade-up">{{ error }}</div>
+{% endif %}
+
+{% if chart %}
+<div class="card mt-4 overflow-hidden reveal" data-anim="up">
+  <div class="flex items-center justify-between border-b border-[rgba(26,29,25,.06)] px-4 py-2.5">
+    <span class="text-[11.5px] text-[var(--ink-4)]">从中心主题向右展开，节点取自原文，不改写</span>
+    <span class="text-[11px] text-[var(--ink-4)]">可横向滚动</span>
+  </div>
+  <div id="mm-wrap" class="mm-wrap max-h-[620px] overflow-auto p-4">
+    <svg class="mm-svg" width="{{ chart.width }}" height="{{ chart.height }}"
+         viewBox="0 0 {{ chart.width }} {{ chart.height }}" role="img"
+         aria-label="{{ doc.title }} 的思维导图">
+      {# 连线先画，节点压在上面 #}
+      {% for e in chart.edges %}
+      <path class="mm-edge" d="M{{ e.x1 }} {{ e.y1 }}
+        C{{ e.x1 + 30 }} {{ e.y1 }}, {{ e.x2 - 30 }} {{ e.y2 }}, {{ e.x2 }} {{ e.y2 }}"/>
+      {% endfor %}
+
+      {% for n in chart.nodes %}
+      {% set limit = 8 if n.depth == 0 else (11 if n.depth == 1 else 12) %}
+      <g class="mm-node" data-depth="{{ n.depth }}">
+        <rect x="{{ n.x }}" y="{{ n.y - 13 }}" width="160" height="26" rx="8"
+              class="mm-rect"/>
+        <text x="{{ n.x + 12 }}" y="{{ n.y + 4.4 }}" class="mm-text">
+          {{ n.title[:limit] }}{% if n.title|length > limit %}…{% endif %}
+        </text>
+        <title>{{ n.title }}</title>
+      </g>
+      {% endfor %}
+    </svg>
+  </div>
+</div>
+
+{% if tree.children %}
+<ul class="mt-5 grid gap-2 sm:grid-cols-2">
+  {% for ch in tree.children %}
+  <li class="card p-3.5 rec-in" data-anim="{{ 'right' if loop.index0 is odd else 'left' }}"
+      style="--d:{{ (loop.index0 % 4) * 0.05 }}s">
+    <div class="text-[13px] font-medium text-[var(--ink-1)]">{{ ch.title }}</div>
+    {% if ch.children %}
+    <div class="mt-2 flex flex-wrap gap-1.5">
+      {% for c in ch.children %}
+      <span class="rounded-full bg-[rgba(26,29,25,.04)] px-2 py-0.5 text-[11.5px] text-[var(--ink-2)]">{{ c.title }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
+
+{% elif not error %}
+<div class="mt-6 rounded-2xl border border-dashed border-[rgba(26,29,25,.11)] bg-white/60 px-6 py-16 text-center">
+  <p class="text-sm text-[var(--ink-2)]">这份资料还没有生成过结构图。</p>
+  <a href="/mindmap/{{ doc.id }}?rebuild=1" class="btn btn-primary mt-4">现在生成</a>
+</div>
+{% endif %}
+
+<style>
+  .mm-svg{display:block}
+  .mm-edge{fill:none;stroke:rgba(26,29,25,.14);stroke-width:1.4}
+  .mm-rect{transition:filter .2s var(--ease-out)}
+  .mm-node[data-depth="0"] .mm-rect{fill:var(--brand)}
+  .mm-node[data-depth="0"] .mm-text{fill:#fff;font-weight:600}
+  .mm-node[data-depth="1"] .mm-rect{fill:#fff;stroke:rgba(13,148,136,.42);stroke-width:1.4}
+  .mm-node[data-depth="1"] .mm-text{fill:var(--ink-1);font-weight:500}
+  .mm-node[data-depth="2"] .mm-rect{fill:rgba(26,29,25,.035)}
+  .mm-node[data-depth="2"] .mm-text{fill:var(--ink-2)}
+  .mm-node:hover .mm-rect{filter:brightness(1.02) saturate(1.1)}
+  .mm-text{font-size:12.5px;dominant-baseline:middle}
+</style>
+
+<script>
+/* 树是垂直居中的，图比容器高时打开会看不到根节点 —— 初始滚到中间 */
+(() => {
+  const wrap = document.getElementById('mm-wrap');
+  const svg = wrap && wrap.querySelector('.mm-svg');
+  if (!wrap || !svg) return;
+  const h = svg.getBoundingClientRect().height;
+  if (h > wrap.clientHeight) {
+    wrap.scrollTop = (h - wrap.clientHeight) / 2;
+  }
+})();
+</script>
+
+{% endblock %}

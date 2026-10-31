@@ -27,6 +27,14 @@
            stroke-linejoin="round" class="h-3.5 w-3.5"><path d="M4 9V5a1 1 0 0 1 1-1h4M20 9V5a1 1 0 0 0-1-1h-4M4 15v4a1 1 0 0 0 1 1h4M20 15v4a1 1 0 0 1-1 1h-4"/></svg>
       全屏阅读
     </button>
+    <a href="/mindmap/{{ doc.id }}" class="btn btn-ghost text-xs">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+           stroke-linejoin="round" class="h-3.5 w-3.5">
+        <circle cx="4.5" cy="12" r="1.8"/><circle cx="19" cy="6" r="1.8"/><circle cx="19" cy="18" r="1.8"/>
+        <path d="M6.3 12h4.2a2 2 0 0 0 2-2V8a2 2 0 0 1 2-2h2.7M6.3 12h4.2a2 2 0 0 1 2 2v2a2 2 0 0 0 2 2h2.7"/>
+      </svg>
+      思维导图
+    </a>
     <a href="/doc/{{ doc.id }}/interview" class="btn btn-ghost text-xs">面试预演</a>
     <a href="/doc/{{ doc.id }}/edit" class="btn btn-ghost text-xs">编辑</a>
   </div>
@@ -61,9 +69,13 @@
 <div class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-sm text-amber-900 fade-up">{{ img_msg }}</div>
 {% endif %}
 
-{% if files %}
-{% set original = files | selectattr('role', 'equalto', 'original') | first %}
-{% set redrawn = files | selectattr('role', 'equalto', 'redrawn') | first %}
+{# 只有「整份文件就是一张图」时才有原图/重排版可切；文档内嵌图走正文，不进这个卡片。
+   注意用 list 再取 [0]：空序列上 |first 返回的是 Undefined，接着取 .url 会直接 500。 #}
+{% set originals = files | selectattr('role', 'equalto', 'original') | list %}
+{% set redraws = files | selectattr('role', 'equalto', 'redrawn') | list %}
+{% if originals or redraws %}
+{% set original = originals[0] if originals else none %}
+{% set redrawn = redraws[0] if redraws else none %}
 <section class="card mt-4 overflow-hidden reveal" data-anim="up">
   <div class="flex flex-wrap items-center justify-between gap-2 border-b border-[rgba(26,29,25,.06)] px-3.5 py-2.5">
     <div class="flex items-center gap-0.5 rounded-full bg-[rgba(26,29,25,.045)] p-0.5 text-[12px]">

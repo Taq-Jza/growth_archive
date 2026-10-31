@@ -8,13 +8,13 @@ import datetime as dt
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from . import auth, cards, charts, config, db, embed, images, importers, ingest, interview, kg, llm, match, rag, seed, study
+from . import auth, cards, charts, config, db, embed, images, importers, ingest, interview, kg, llm, match, mindmap, rag, seed, study
 from .search import (
     browse,
     browse_count,
@@ -431,6 +431,44 @@ def partial_records(request: Request, page: int = 1, sort: str = "time"):
     )
 
 
+@app.get("/mindmap/{doc_id}", response_class=HTMLResponse)
+def mindmap_page(request: Request, doc_id: int, rebuild: int = 0):
+    """一份资料自己的思维导图：主题在一层、要点在二层，横向展开。"""
+    user = auth.current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    doc = db.one(
+        "SELECT id, title, kind, period, created_at FROM documents WHERE id = ? AND user_id = ?",
+        (doc_id, user["id"]),
+    )
+    if not doc:
+        return RedirectResponse("/", status_code=303)
+
+    tree = mindmap.load(doc_id)
+    error = ""
+    if rebuild or not tree:
+        if not llm.available():
+            error = "没有配置模型密钥，暂时生成不了思维导图。"
+        else:
+            tree = mindmap.build(user["id"], doc_id, force=bool(rebuild))
+            if not tree:
+                error = "这次没能抽出结构，换一份资料或稍后再试。"
+
+    chart = mindmap.layout(tree) if tree else None
+    return TEMPLATES.TemplateResponse(
+        request,
+        "mindmap.html",
+        {
+            "user": user,
+            "doc": doc,
+            "tree": tree,
+            "chart": chart,
+            "error": error,
+            "kinds": ingest.KINDS,
+        },
+    )
+
+
 @app.get("/kg", response_class=HTMLResponse)
 def kg_page(
     request: Request, kind: str = "", tag: str = "", built: int = 0, ok: int = 0, fail: int = 0,
@@ -451,6 +489,9 @@ def kg_page(
             if c not in seen:
                 seen.append(c)
 
+    # 课程/标签选择器：把「哪几门课」说清楚，别把所有课程混在一张图上
+    folders = tag_folders(user["id"], kind=kind)[:12]
+
     return TEMPLATES.TemplateResponse(
         request,
         "kg.html",
@@ -463,6 +504,7 @@ def kg_page(
             "chapters": chapters,
             "concepts": seen[:24],
             "graph": kg.layout(rows) if rows else None,
+            "folders": folders,
             "built": {"ok": ok, "failed": fail} if built else None,
             "build_error": err,
             "kinds": ingest.KINDS,
@@ -575,6 +617,7 @@ def doc_page(request: Request, doc_id: int, cid: int | None = None, card_msg: st
     cards = db.rows("SELECT * FROM cards WHERE document_id = ?", (doc_id,))
     files = images.list_for(doc_id)
     has_redraw = any(f["role"] == "redrawn" for f in files)
+    inline = {f["seq"]: f["url"] for f in files if f["role"] == "inline" and f["seq"]}
 
     # 引用跳转：把被引用的片段在正文中高亮出来（对应 AC-05-2）
     body_html = html_lib.escape(doc["body"])
@@ -588,6 +631,26 @@ def doc_page(request: Request, doc_id: int, cid: int | None = None, card_msg: st
                 body_html = body_html.replace(
                     needle, f'<mark id="cited">{needle}</mark>', 1
                 )
+
+    # 文档内嵌图：正文里的 ⟦IMG:n⟧ 换成真实图片。
+    # 在 escape 之后替换 —— 占位符全是普通字符，不会被转义，替换进去的 img 标签才不会被二次转义。
+    body_html = importers.IMG_MARK_RE.sub(
+        lambda m: (
+            f'<img class="doc-inline-img" src="{inline[int(m.group(1))]}" '
+            f'alt="图 {m.group(1)}" loading="lazy">'
+            if int(m.group(1)) in inline
+            else '<span class="doc-img-miss">（这张图没能保存下来）</span>'
+        ),
+        body_html,
+    )
+    # 粘贴进来的 Markdown 图片：保留外链，不下载也不改写
+    body_html = importers.MD_IMG_RE.sub(
+        lambda m: (
+            f'<img class="doc-inline-img" src="{m.group(2)}" '
+            f'alt="{m.group(1) or "图片"}" loading="lazy">'
+        ),
+        body_html,
+    )
 
     return TEMPLATES.TemplateResponse(
         request,
@@ -694,9 +757,48 @@ def new_page(request: Request, kind: str = "", err: str = ""):
     )
 
 
+def _ocr_inline_images(doc_id: int, items: list[tuple[int, bytes]]) -> None:
+    """把文档内嵌图的文字识别出来，插回正文对应位置。
+
+    20 张图串行要两三分钟，放在上传请求里干等不合理：先让用户看到图，
+    文字在后台慢慢补，补完检索就能命中图里的内容。
+    并发 4 路是实测的折中 —— 再高对端限流，再低等太久。
+    """
+    if not items or not llm.available():
+        return
+    from concurrent.futures import ThreadPoolExecutor
+
+    def one(pair: tuple[int, bytes]) -> tuple[int, str]:
+        seq, data = pair
+        try:
+            text, _ = importers.image_to_text(data)
+            return seq, text
+        except Exception:  # noqa: BLE001 单张失败就跳过，不影响其它图
+            return seq, ""
+
+    got: dict[int, str] = {}
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        for seq, text in pool.map(one, items):
+            if text:
+                got[seq] = text
+
+    if not got:
+        return
+    row = db.one("SELECT body FROM documents WHERE id = ?", (doc_id,))
+    if not row:
+        return
+    body = row["body"]
+    for seq, text in got.items():
+        mark = importers.IMG_MARK.format(n=seq)
+        # 图注紧跟占位：图和它的文字算同一段，检索命中时能一起返回
+        body = body.replace(mark, f"{mark}\n（图 {seq} 内容）{text}", 1)
+    ingest.refresh_body(doc_id, body)
+
+
 @app.post("/upload")
 async def upload_file(
     request: Request,
+    background: BackgroundTasks,
     file: UploadFile | None = File(None),
     kind: str = Form("course"),
     title: str = Form(""),
@@ -726,7 +828,7 @@ async def upload_file(
 
     data = await file.read()
     try:
-        text, note = importers.extract(file.filename or "", data)
+        text, note, pics = importers.extract(file.filename or "", data)
     except importers.ExtractError as exc:
         return RedirectResponse(
             f"/new?kind={kind}&err={quote(str(exc))}", status_code=303
@@ -768,6 +870,21 @@ async def upload_file(
                 extra = "&img=fail&why=" + quote(f"重排未成功（{str(exc)[:40]}），已保留原图")
         else:
             extra = "&img=original"
+    elif pics:
+        # 文档里的内嵌图：按正文序号落盘，详情页据此把 ⟦IMG:n⟧ 换成真图。
+        # 图本身不参与检索（正文才是依据），但图里的文字要 —— 交给后台识别后补进正文。
+        saved: list[tuple[int, bytes]] = []
+        for p in pics:
+            try:
+                images.save_bytes(doc_id, p["data"], p["ext"], role="inline", seq=p["index"])
+                saved.append((p["index"], p["data"]))
+            except Exception:  # noqa: BLE001 单张失败不影响其余
+                continue
+        if saved:
+            extra = f"&img=inline&n={len(saved)}"
+            background.add_task(_ocr_inline_images, doc_id, saved)
+            if llm.available():
+                note += "，图片里的文字正在后台识别"
     return RedirectResponse(f"/doc/{doc_id}?note={quote(note)}{extra}", status_code=303)
 
 

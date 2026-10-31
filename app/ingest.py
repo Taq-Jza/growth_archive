@@ -8,7 +8,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 
-from . import db, embed
+from . import config, db, embed
 from .textproc import chunk_text, segment
 
 KINDS = {
@@ -47,6 +47,25 @@ def _clear_derived(doc_id: int) -> None:
             conn.execute("DELETE FROM chunks_fts WHERE chunk_id = ?", (row["id"],))
         conn.execute("DELETE FROM chunks WHERE document_id = ?", (doc_id,))
         conn.execute("DELETE FROM cards WHERE document_id = ?", (doc_id,))
+
+
+def refresh_body(doc_id: int, body: str) -> None:
+    """只换正文并重建切片与索引，不碰要点卡。
+
+    后台把图注补进正文时用：卡片是用户可能已经生成过的东西，
+    不该因为一次后台更新被清掉。
+    """
+    row = db.one("SELECT title, created_at FROM documents WHERE id = ?", (doc_id,))
+    if not row:
+        return
+    db.execute("UPDATE documents SET body = ? WHERE id = ?", (body, doc_id))
+    with db.get_conn() as conn:
+        for r in conn.execute(
+            "SELECT id FROM chunks WHERE document_id = ?", (doc_id,)
+        ).fetchall():
+            conn.execute("DELETE FROM chunks_fts WHERE chunk_id = ?", (r["id"],))
+        conn.execute("DELETE FROM chunks WHERE document_id = ?", (doc_id,))
+    _index_document(doc_id, row["title"], body, row["created_at"])
 
 
 def _norm_period(value: str | None) -> str | None:
@@ -123,10 +142,23 @@ def delete_document(user_id: int, doc_id: int) -> bool:
     if not doc:
         return False
 
+    # 附件行随 documents 级联删除，但磁盘上的图不会跟着走 —— 先记下文件名，删完库再清盘
+    files = [
+        r["filename"]
+        for r in db.rows("SELECT filename FROM attachments WHERE document_id = ?", (doc_id,))
+    ]
+
     _clear_derived(doc_id)
     with db.get_conn() as conn:
         conn.execute("DELETE FROM document_tags WHERE document_id = ?", (doc_id,))
         conn.execute("DELETE FROM documents WHERE id = ? AND user_id = ?", (doc_id, user_id))
+
+    upload_dir = config.DATA_DIR / "uploads"
+    for name in files:
+        try:
+            (upload_dir / name).unlink()
+        except OSError:
+            pass  # 文件已经不在就跳过，不能让删记录因为丢一张图失败
 
     from .search import invalidate_vector_cache
 

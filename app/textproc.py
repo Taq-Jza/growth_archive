@@ -12,6 +12,15 @@ import jieba
 
 from . import config
 
+# jieba 首次分词会把词典缓存写到系统临时目录（Windows 上就是 C 盘）。
+# 这个项目的约定是运行产物都留在项目目录内，所以把缓存指到 data/ 下。
+_CACHE_DIR = config.DATA_DIR / ".jieba"
+try:
+    _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    jieba.dt.tmp_dir = str(_CACHE_DIR)
+except OSError:
+    pass  # 建不出来就让它用默认目录，不能因为缓存位置把分词搞挂
+
 _CJK = re.compile(r"[\u4e00-\u9fff]")
 
 

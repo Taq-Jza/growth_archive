@@ -83,9 +83,10 @@ CREATE INDEX IF NOT EXISTS idx_card_user ON cards(user_id, created_at DESC);
 CREATE TABLE IF NOT EXISTS attachments (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
-    role        TEXT NOT NULL DEFAULT 'original',   -- original | redrawn
+    role        TEXT NOT NULL DEFAULT 'original',   -- original | redrawn | inline
     filename    TEXT NOT NULL,
     mime        TEXT,
+    seq         INTEGER NOT NULL DEFAULT 0,         -- inline 图在正文里的序号
     created_at  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_att_doc ON attachments(document_id);
@@ -95,6 +96,13 @@ CREATE TABLE IF NOT EXISTS doc_kg (
     document_id INTEGER PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
     chapter     TEXT NOT NULL DEFAULT '',
     concepts    TEXT NOT NULL DEFAULT '[]',
+    created_at  TEXT NOT NULL
+);
+
+-- 思维导图：一份资料自身的知识结构（与 doc_kg 的单章节不同，这里是一棵树）
+CREATE TABLE IF NOT EXISTS doc_map (
+    document_id INTEGER PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+    data        TEXT NOT NULL DEFAULT '{}',
     created_at  TEXT NOT NULL
 );
 """
@@ -140,6 +148,12 @@ def _migrate(conn: sqlite3.Connection) -> None:
         labels,
     )
     conn.execute(f"DELETE FROM tags WHERE name IN ({ph})", labels)
+
+    # 3) attachments.seq：正文里的内嵌图片按序号占位，渲染时按 seq 取回。
+    #    CREATE TABLE IF NOT EXISTS 不会给已有表补列，只能在这里 ALTER。
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(attachments)")}
+    if "seq" not in cols:
+        conn.execute("ALTER TABLE attachments ADD COLUMN seq INTEGER NOT NULL DEFAULT 0")
 
 
 def rows(sql: str, params: Iterable[Any] = ()) -> list[sqlite3.Row]:

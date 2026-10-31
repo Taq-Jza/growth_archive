@@ -49,6 +49,8 @@
 | T-37 | 图片两种处理模式 | F-11 | `app/images.py` `app/main.py` `templates/doc.html` | 原图留存；重排图与正文逐字一致 | 已完成 |
 | T-38 | 章节知识图谱 | F-14 | `app/kg.py` `templates/kg.html` `templates/category.html` | 分章落库；图上可点、二次不调模型 | 已完成 |
 | T-39 | 点击粒子反馈 | 全局 | `templates/base.html` | 导航与按钮同色板粒子，尊重减弱动效 | 已完成 |
+| T-40 | 文档内嵌图保留 | F-11 | `app/importers.py` `app/images.py` `app/main.py` `app/db.py` | 按序抽图、占位入库、后台补 OCR、删记录清文件 | 已完成 |
+| T-41 | 单份资料思维导图 | F-15 | `app/mindmap.py` `templates/mindmap.html` | 两层树、本地布局、落库缓存、按课程筛选图谱 | 已完成 |
 
 ---
 

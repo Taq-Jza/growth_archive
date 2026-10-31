@@ -72,6 +72,21 @@
     mark{background:linear-gradient(180deg,transparent 58%, rgba(250,204,21,.42) 58%);color:inherit;padding:0 1px;border-radius:2px}
     .prose-body{white-space:pre-wrap;line-height:1.8;font-size:14.5px;color:var(--ink-2)}
     .prose-body strong{color:var(--ink-1);font-weight:600}
+    /* 文档里带出来的图：跟着它所在的那段文字走，不单独堆在页尾 */
+    .prose-body .doc-inline-img{
+      display:block;max-width:100%;height:auto;margin:4px auto 16px;white-space:normal;
+      border-radius:10px;cursor:zoom-in;
+      box-shadow:0 0 0 1px rgba(26,29,25,.07), 0 12px 28px -22px rgba(26,29,25,.7);
+      transition:transform .25s var(--ease-out), box-shadow .25s var(--ease-out);
+    }
+    .prose-body .doc-inline-img:hover{
+      transform:translateY(-1px);
+      box-shadow:0 0 0 1px var(--brand-edge), 0 16px 32px -20px rgba(13,148,136,.55);
+    }
+    .prose-body .doc-img-miss{
+      display:block;margin:6px 0 14px;padding:8px 12px;border-radius:8px;
+      background:rgba(245,166,35,.1);color:#8a5a00;font-size:12.5px;white-space:normal;
+    }
 
     a,button{transition:color var(--t-mid) var(--ease-soft), background-color var(--t-mid) var(--ease-soft),
               border-color var(--t-mid) var(--ease-soft), box-shadow var(--t-mid) var(--ease-soft),

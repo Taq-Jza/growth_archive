@@ -85,23 +85,96 @@ def _clean(text: str) -> str:
     return text.strip()
 
 
-def _from_docx(data: bytes) -> str:
+IMG_MARK = "⟦IMG:{n}⟧"
+IMG_MARK_RE = re.compile(r"⟦IMG:(\d+)⟧")
+# 粘贴进来的 Markdown 图片：只认带协议头的地址，避免 javascript: 之类混进 src
+MD_IMG_RE = re.compile(r"!\[([^\]]{0,80})\]\((https?://[^\s)]+)\)")
+
+
+def _docx_blocks(doc):
+    """按文档顺序产出段落与表格。
+
+    `doc.paragraphs` 只给正文段落、还跳过表格里的内容，也拿不到图片在文中的位置；
+    直接走 body 的子节点才能保住真实顺序 —— 图片落在哪段之后是有意义的。
+    """
+    from docx.oxml.ns import qn
+    from docx.table import Table
+    from docx.text.paragraph import Paragraph
+
+    for child in doc.element.body.iterchildren():
+        if child.tag == qn("w:p"):
+            yield Paragraph(child, doc)
+        elif child.tag == qn("w:tbl"):
+            yield Table(child, doc)
+
+
+def _para_pics(para, doc, seen: dict) -> list[tuple[bytes, str]]:
+    """段落里内嵌的图片。同一 rId 被多处引用时只取一次二进制。"""
+    from docx.oxml.ns import qn
+
+    out: list[tuple[bytes, str]] = []
+    for blip in para._element.iter(qn("a:blip")):
+        rid = blip.get(qn("r:embed"))
+        if not rid:
+            continue
+        if rid in seen:
+            out.append(seen[rid])
+            continue
+        part = doc.part.related_parts.get(rid)
+        blob = getattr(part, "blob", None) if part else None
+        if not blob:
+            continue
+        ext = "." + str(getattr(part.partname, "ext", "") or "png").lower()
+        seen[rid] = (blob, ext)
+        out.append(seen[rid])
+    return out
+
+
+def _from_docx(data: bytes) -> tuple[str, list[dict]]:
+    """返回 (正文, 内嵌图片)。
+
+    图片不丢：按出现顺序编号，正文里留一个 ⟦IMG:n⟧ 占位，入库后由上层把
+    占位换成真实图片地址 —— 这样图和它所在的那段文字始终待在一起。
+    """
     try:
         from docx import Document
+        from docx.table import Table
     except ImportError as exc:
         raise ExtractError("服务器缺少 python-docx，无法解析 Word 文档。") from exc
 
-    doc = Document(io.BytesIO(data))
+    try:
+        doc = Document(io.BytesIO(data))
+    except Exception as exc:  # noqa: BLE001
+        raise ExtractError("这份 Word 打不开，可能已损坏。") from exc
+
+    seen: dict[str, tuple] = {}
+    pics: list[dict] = []
     parts: list[str] = []
-    for para in doc.paragraphs:
-        if para.text.strip():
-            parts.append(para.text.strip())
-    for table in doc.tables:
-        for row in table.rows:
-            cells = [c.text.strip().replace("\n", " ") for c in row.cells]
-            if any(cells):
-                parts.append("| " + " | ".join(cells) + " |")
-    return "\n\n".join(parts)
+
+    for block in _docx_blocks(doc):
+        if isinstance(block, Table):
+            for row in block.rows:
+                cells = [c.text.strip().replace("\n", " ") for c in row.cells]
+                if any(cells):
+                    parts.append("| " + " | ".join(cells) + " |")
+                # 表格单元格里也可能贴图，顺带收一遍
+                for cell in row.cells:
+                    for p in cell.paragraphs:
+                        for blob, ext in _para_pics(p, doc, seen):
+                            n = len(pics) + 1
+                            pics.append({"data": blob, "ext": ext, "index": n})
+                            parts.append(IMG_MARK.format(n=n))
+            continue
+
+        text = block.text.strip()
+        if text:
+            parts.append(text)
+        for blob, ext in _para_pics(block, doc, seen):
+            n = len(pics) + 1
+            pics.append({"data": blob, "ext": ext, "index": n})
+            parts.append(IMG_MARK.format(n=n))
+
+    return "\n\n".join(parts), pics
 
 
 def _from_pdf(data: bytes) -> str:
@@ -132,7 +205,7 @@ def _from_pdf(data: bytes) -> str:
     return joined
 
 
-def _image_to_text(data: bytes) -> tuple[str, str]:
+def image_to_text(data: bytes) -> tuple[str, str]:
     """图片转文字。返回 (正文, 说明)，说明用于告诉用户用了哪个模型。"""
     try:
         from PIL import Image
@@ -159,8 +232,12 @@ def _image_to_text(data: bytes) -> tuple[str, str]:
     return _clean(_normalize_ocr(raw)), f"由 {config.VISION_MODEL} 识别"
 
 
-def extract(filename: str, data: bytes) -> tuple[str, str]:
-    """返回 (正文, 说明)。失败抛 ExtractError。"""
+def extract(filename: str, data: bytes) -> tuple[str, str, list[dict]]:
+    """返回 (正文, 说明, 内嵌图片)。
+
+    内嵌图片只在 docx 里有：每张带 data / ext / index，正文对应位置留 ⟦IMG:n⟧。
+    其他格式返回空列表。失败抛 ExtractError。
+    """
     if not data:
         raise ExtractError("文件是空的。")
     if len(data) > MAX_ATTACH_BYTES:
@@ -170,17 +247,20 @@ def extract(filename: str, data: bytes) -> tuple[str, str]:
     suffix = "." + name.rsplit(".", 1)[-1] if "." in name else ""
 
     if suffix in TEXT_EXT:
-        return _clean(_decode_text(data)), "已读取文本"
+        return _clean(_decode_text(data)), "已读取文本", []
 
     if suffix in DOCX_EXT:
-        return _clean(_from_docx(data)), "已解析 Word 文档"
+        text, pics = _from_docx(data)
+        note = "已解析 Word 文档" + (f"，含 {len(pics)} 张内嵌图片" if pics else "")
+        return _clean(text), note, pics
 
     if suffix in PDF_EXT:
-        return _clean(_from_pdf(data)), "已解析 PDF 文字层"
+        return _clean(_from_pdf(data)), "已解析 PDF 文字层", []
 
     if suffix in IMAGE_EXT:
         if not llm.available():
             raise ExtractError("图片需要模型识别，但当前没有配置模型密钥。")
-        return _image_to_text(data)
+        text, note = image_to_text(data)
+        return text, note, []
 
     raise ExtractError(f"暂不支持 {suffix or '这种'} 格式。支持 txt / md / docx / pdf / 图片。")

@@ -41,8 +41,11 @@ def _ensure_dir() -> None:
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def save_bytes(document_id: int, data: bytes, ext: str, role: str = "original") -> str:
-    """把图片写盘并登记，返回可访问的相对路径。"""
+def save_bytes(document_id: int, data: bytes, ext: str, role: str = "original", seq: int = 0) -> str:
+    """把图片写盘并登记，返回可访问的相对路径。
+
+    role=inline 时 seq 是它在正文里的序号，对应正文中的 ⟦IMG:n⟧ 占位。
+    """
     _ensure_dir()
     ext = (ext or ".png").lower()
     if ext not in MIME_BY_EXT:
@@ -51,19 +54,21 @@ def save_bytes(document_id: int, data: bytes, ext: str, role: str = "original") 
     (UPLOAD_DIR / name).write_bytes(data)
     with db.get_conn() as conn:
         conn.execute(
-            "INSERT INTO attachments (document_id, role, filename, mime, created_at) VALUES (?,?,?,?,?)",
-            (document_id, role, name, MIME_BY_EXT[ext], dt.datetime.now().isoformat(timespec="seconds")),
+            "INSERT INTO attachments (document_id, role, filename, mime, seq, created_at) "
+            "VALUES (?,?,?,?,?,?)",
+            (document_id, role, name, MIME_BY_EXT[ext], int(seq or 0),
+             dt.datetime.now().isoformat(timespec="seconds")),
         )
     return f"/media/{name}"
 
 
 def list_for(document_id: int) -> list[dict]:
     rows = db.rows(
-        "SELECT role, filename, mime FROM attachments WHERE document_id = ? ORDER BY id",
+        "SELECT role, filename, mime, seq FROM attachments WHERE document_id = ? ORDER BY id",
         (document_id,),
     )
     return [
-        {"role": r["role"], "url": f"/media/{r['filename']}", "mime": r["mime"]}
+        {"role": r["role"], "url": f"/media/{r['filename']}", "mime": r["mime"], "seq": r["seq"]}
         for r in rows
     ]
 
