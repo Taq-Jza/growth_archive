@@ -570,11 +570,13 @@
   });
 
   /* ---------- 滚动揭示 ---------- */
+  // threshold 用 0：正文动辄上万像素高，按比例算交叉面积会永远达不到阈值，
+  // 结果是长文档一进来就是透明的。只要露头就播动画。
   const io = new IntersectionObserver((entries) => {
     entries.forEach(en => {
       if (en.isIntersecting) { en.target.classList.add('in'); io.unobserve(en.target); }
     });
-  }, { rootMargin: '0px 0px -6% 0px', threshold: 0.04 });
+  }, { rootMargin: '0px 0px -6% 0px', threshold: 0 });
   const scanReveal = (root) => {
     (root || document).querySelectorAll('.reveal:not(.in)').forEach(el => io.observe(el));
   };
