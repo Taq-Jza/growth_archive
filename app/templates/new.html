@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}添加资料 · 成长档案{% endblock %}
+{% block content %}
+{% from "_ui.html" import picker %}
+
+<div class="mx-auto max-w-2xl">
+  <div class="eyebrow">添加</div>
+  <h1 class="page-title mt-1.5">添加资料</h1>
+  <p class="mt-1 text-[13px] text-[var(--ink-3)]">
+    课程、技能、竞赛、项目、特长都能记。系统会切块建索引，之后能被检索、提问，也能用于岗位匹配。
+  </p>
+
+  {% if error %}
+  <div class="mt-5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{{ error }}</div>
+  {% endif %}
+
+  <div class="card mt-6 p-5">
+    <h2 class="text-sm font-medium">上传文件</h2>
+    <p class="mt-1 text-xs text-[var(--ink-3)]">
+      支持 txt / md / docx / pdf，以及图片（课件截图、板书、教材照片、证书）。
+      图片会先识别成文字（约 10–20 秒）；图示、笔迹、证书原件这类信息留在图片里。
+    </p>
+
+    <form method="post" action="/upload" enctype="multipart/form-data" class="mt-4 space-y-3">
+      <div class="grid grid-cols-2 gap-3">
+        {{ picker('kind', kinds.items()|list, preset_kind, size='md', full=True, menu_class='w-full') }}
+        <input name="period" type="date" title="发生时间（精确到日，可留空）"
+               class="field w-full">
+      </div>
+
+      <input name="title" placeholder="标题（留空则用文件名）"
+             class="field w-full">
+
+      <label class="block rounded-lg border border-dashed border-[rgba(26,29,25,.16)] bg-[rgba(250,250,248,1)] px-4 py-6 text-center text-sm text-[var(--ink-3)]">
+        <input type="file" name="file" required
+               accept=".txt,.md,.markdown,.docx,.pdf,.png,.jpg,.jpeg,.webp,.bmp"
+               class="block w-full cursor-pointer text-xs text-[var(--ink-3)]">
+        <span class="mt-2 block">选择文件，或把文件拖进来</span>
+      </label>
+
+      <div class="rounded-lg bg-[rgba(13,148,136,.04)] p-3">
+        <div class="text-[11.5px] font-medium text-[var(--ink-2)]">图片处理方式 <span class="font-normal text-[var(--ink-4)]">（仅对图片生效）</span></div>
+        <div class="mt-2 grid gap-2 sm:grid-cols-2">
+          <label class="group relative flex cursor-pointer items-start gap-2 rounded-[9px] bg-white p-2.5 shadow-[inset_0_0_0_1px_rgba(26,29,25,.08)] transition-all duration-200 hover:shadow-[inset_0_0_0_1px_var(--brand-edge)] has-[:checked]:bg-[var(--brand-tint)] has-[:checked]:shadow-[inset_0_0_0_1px_var(--brand-edge)]">
+            <input type="radio" name="image_mode" value="original" checked class="mt-0.5 accent-[var(--brand)]">
+            <span class="min-w-0">
+              <span class="block text-[12.5px] font-medium text-[var(--ink-1)]">保留原图</span>
+              <span class="mt-0.5 block text-[11px] leading-relaxed text-[var(--ink-3)]">笔记只取识别出的文字，原图完整留存 —— 图示、笔迹、证书都能回看</span>
+            </span>
+          </label>
+          <label class="group relative flex cursor-pointer items-start gap-2 rounded-[9px] bg-white p-2.5 shadow-[inset_0_0_0_1px_rgba(26,29,25,.08)] transition-all duration-200 hover:shadow-[inset_0_0_0_1px_var(--brand-edge)] has-[:checked]:bg-[var(--brand-tint)] has-[:checked]:shadow-[inset_0_0_0_1px_var(--brand-edge)]">
+            <input type="radio" name="image_mode" value="redraw" class="mt-0.5 accent-[var(--brand)]">
+            <span class="min-w-0">
+              <span class="block text-[12.5px] font-medium text-[var(--ink-1)]">重排成整洁笔记</span>
+              <span class="mt-0.5 block text-[11px] leading-relaxed text-[var(--ink-3)]">用识别出的文字重新排版成一张笔记图，一字不改、几秒完成；原图同样保留</span>
+            </span>
+          </label>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <button class="btn btn-primary"
+                onclick="this.textContent='解析中，请稍候…';this.classList.add('opacity-60');this.form.submit();">
+          上传并解析
+        </button>
+        {% if not vision_ready %}
+        <span class="text-xs text-amber-700">未配置模型密钥，图片解析不可用</span>
+        {% endif %}
+      </div>
+    </form>
+
+    <form method="post" action="/upload" enctype="multipart/form-data" class="mt-3 border-t border-[rgba(26,29,25,.05)] pt-3">
+      <input type="hidden" name="kind" value="{{ preset_kind }}">
+      <input type="hidden" name="image_mode" value="original">
+      <label class="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-white shadow-[inset_0_0_0_1px_rgba(26,29,25,.1)] px-3 py-1.5 text-sm hover:shadow-[inset_0_0_0_1px_var(--brand-edge)]">
+        <input type="file" name="file" accept="image/*" capture="environment" required
+               class="sr-only" onchange="this.form.submit();">
+        拍照上传
+      </label>
+      <span class="ml-2 text-xs text-[var(--ink-4)]">手机上直接调起相机</span>
+    </form>
+  </div>
+
+  <div class="card mt-6 p-5">
+    <h2 class="text-sm font-medium">粘贴文本</h2>
+    <p class="mt-1 text-xs text-[var(--ink-3)]">适合从网页、聊天记录、笔记软件里直接复制的内容。</p>
+
+    <form method="post" action="/new" class="mt-4 space-y-3">
+      <div class="grid grid-cols-2 gap-3">
+        {{ picker('kind', kinds.items()|list, preset_kind, size='md', full=True, menu_class='w-full') }}
+        <input name="period" type="date" title="发生时间（精确到日，可留空）"
+               class="field w-full">
+      </div>
+      <input name="title" placeholder="标题，例如「蓝桥杯省赛二等奖」" required
+             class="field w-full">
+      <textarea name="body" rows="10" required
+                placeholder="具体做了什么、结果如何、你的角色是什么。写得越具体，简历生成时越有用。"
+                class="field w-full"></textarea>
+      <input name="tags" placeholder="标签，用逗号分隔"
+             class="field w-full">
+      <button class="btn btn-ghost">保存并建索引</button>
+    </form>
+  </div>
+</div>
+
+{% endblock %}

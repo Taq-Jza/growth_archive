@@ -1,0 +1,39 @@
+{# 可复用的控件。样式与交互都收在 base.html 里，模板只负责传数据。 #}
+
+{# 自绘下拉。
+   原生 select 的弹层在各浏览器里样式不一、也没法做展开动画，全站统一成
+   「按钮 + 面板」：面板缩放浮出、选项自下而上堆叠落位、选中项打勾。
+
+   用法：
+     {% from "_ui.html" import picker %}
+     {{ picker('kind', kinds.items()|list, preset_kind, size='md', full=True) }}
+
+   options 是 [(value, label), ...]；value 不在其中时显示第一项并选中它。 #}
+{% macro picker(name, options, value='', uid='', align='right', size='sm', full=False, trigger_class='', menu_class='') %}
+{%- set opts = options | list -%}
+{%- set labels = dict(opts) -%}
+{%- set dims = {
+  'sm': 'rounded-[9px] px-2.5 py-2 text-[12.5px]',
+  'md': 'rounded-[10px] px-3 py-2 text-sm',
+} -%}
+<div class="picker {{ 'is-block' if full else '' }}" data-picker>
+  <input type="hidden" name="{{ name }}" value="{{ value }}" data-picker-value{% if uid %} id="{{ uid }}"{% endif %}>
+  <button type="button" data-picker-trigger aria-haspopup="listbox" aria-expanded="false"
+          class="picker-btn {{ dims.get(size, dims['sm']) }} {{ trigger_class }}">
+    <span data-picker-label>{{ labels.get(value, opts[0][1] if opts else '') }}</span>
+    <svg data-picker-caret viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+         stroke-linecap="round" class="h-3 w-3 shrink-0 text-[var(--ink-4)]"><path d="m6 9 6 6 6-6"/></svg>
+  </button>
+  <div data-picker-menu role="listbox"
+       class="picker-menu absolute top-full z-30 mt-2 hidden rounded-[12px] bg-white p-1 shadow-[0_18px_40px_-18px_rgba(26,29,25,.45),0_0_0_1px_rgba(26,29,25,.08)] {{ 'right-0' if align == 'right' else 'left-0' }} {{ menu_class or 'w-[148px]' }}">
+    {% for v, label in opts %}
+    <button type="button" role="option" data-value="{{ v }}" data-label="{{ label }}" style="--i:{{ loop.index0 }}"
+            class="picker-opt flex w-full items-center justify-between gap-3 rounded-[8px] px-2.5 py-1.5 text-left text-[13px] text-[var(--ink-2)] transition-colors hover:bg-[var(--brand-tint)] hover:text-[var(--brand-deep)]">
+      {{ label }}
+      <svg class="picker-tick h-3 w-3 shrink-0 text-[var(--brand)] opacity-0" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m5 13 4 4L19 7"/></svg>
+    </button>
+    {% endfor %}
+  </div>
+</div>
+{% endmacro %}

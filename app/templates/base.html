@@ -1,0 +1,795 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0D9488">
+  <title>{% block title %}成长档案{% endblock %}</title>
+  <!-- 先打上 js 标记：没有脚本时 .reveal 不隐藏内容，避免「列表一片空白」 -->
+  <script>document.documentElement.classList.add('js');</script>
+  <script src="/static/tailwind.js"></script>
+  <style>
+    /* ============================================================
+       设计令牌
+       配色只保留一个主色（青绿），其余颜色只服务于数据可视化。
+       动效只用两档缓动：入场 expo-out（自然收尾）、交互 standard。
+       ============================================================ */
+    :root{
+      --ink-1:#1A1D19;
+      --ink-2:#4E544D;
+      --ink-3:#7C837B;
+      --ink-4:#A9AFA7;
+
+      --brand:#0D9488;
+      --brand-deep:#0F766E;
+      --brand-tint:rgba(13,148,136,.085);
+      --brand-edge:rgba(13,148,136,.30);
+      --brand-glow:rgba(13,148,136,.16);
+
+      --line:rgba(26,29,25,.065);
+      --line-2:rgba(26,29,25,.105);
+      --paper:#FAFAF8;
+      --surface:#fff;
+
+      --r-sm:9px; --r-md:13px; --r-lg:18px; --r-xl:24px;
+
+      --sh-1:0 0 0 1px rgba(26,29,25,.075), 0 1px 2px rgba(26,29,25,.04), 0 3px 10px -6px rgba(26,29,25,.07);
+      --sh-2:0 0 0 1px rgba(26,29,25,.08), 0 3px 10px -4px rgba(26,29,25,.08);
+      --sh-lift:0 0 0 1px rgba(13,148,136,.16), 0 16px 34px -22px rgba(26,29,25,.42);
+      --sh-brand:0 12px 26px -16px rgba(13,148,136,.5);
+
+      --ease:cubic-bezier(.16,1,.3,1);   /* 兼容旧引用，等同 ease-out */
+      --ease-out:cubic-bezier(.16,1,.3,1);
+      --ease-soft:cubic-bezier(.32,.72,0,1);
+      --ease-std:cubic-bezier(.4,0,.2,1);
+      --t-fast:150ms; --t-mid:220ms; --t-slow:420ms;
+
+      --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","HarmonyOS Sans SC","Microsoft YaHei","Noto Sans SC",sans-serif;
+    }
+
+    html{scroll-behavior:smooth;-webkit-tap-highlight-color:transparent}
+    body{
+      font-family:var(--font);
+      font-size:14px;
+      line-height:1.6;
+      color:var(--ink-1);
+      background:
+        radial-gradient(860px 420px at 6% -8%, rgba(13,148,136,.07), transparent 62%),
+        radial-gradient(720px 380px at 98% -4%, rgba(99,102,241,.055), transparent 60%),
+        var(--paper);
+      background-attachment:fixed;
+      -webkit-font-smoothing:antialiased;
+      text-rendering:optimizeLegibility;
+      font-feature-settings:"tnum" 0;
+    }
+    ::selection{background:rgba(13,148,136,.16);color:var(--ink-1)}
+
+    ::-webkit-scrollbar{width:11px;height:11px}
+    ::-webkit-scrollbar-thumb{background:rgba(26,29,25,.13);border-radius:99px;border:3.5px solid transparent;background-clip:content-box;transition:background .2s}
+    ::-webkit-scrollbar-thumb:hover{background:rgba(26,29,25,.24);background-clip:content-box}
+    ::-webkit-scrollbar-track{background:transparent}
+
+    mark{background:linear-gradient(180deg,transparent 58%, rgba(250,204,21,.42) 58%);color:inherit;padding:0 1px;border-radius:2px}
+    .prose-body{white-space:pre-wrap;line-height:1.8;font-size:14.5px;color:var(--ink-2)}
+    .prose-body strong{color:var(--ink-1);font-weight:600}
+
+    a,button{transition:color var(--t-mid) var(--ease-soft), background-color var(--t-mid) var(--ease-soft),
+              border-color var(--t-mid) var(--ease-soft), box-shadow var(--t-mid) var(--ease-soft),
+              transform var(--t-mid) var(--ease-out), opacity var(--t-mid) var(--ease-soft)}
+    button{cursor:pointer}
+    :focus-visible{outline:2px solid var(--brand-edge);outline-offset:2px;border-radius:8px}
+
+    /* ============ 文字层级 ============ */
+    .eyebrow{font-size:10.5px;letter-spacing:.17em;color:var(--ink-4);text-transform:uppercase;font-weight:500}
+    .page-title{font-size:25px;line-height:1.22;font-weight:650;letter-spacing:-.026em;color:var(--ink-1)}
+    .section-title{font-size:13.5px;font-weight:600;letter-spacing:-.005em;color:var(--ink-1)}
+    .muted{color:var(--ink-3)}
+    .tnum{font-variant-numeric:tabular-nums;letter-spacing:-.015em}
+
+    /* ============ 卡片 ============ */
+    .card{
+      background:var(--surface);
+      border-radius:var(--r-md);
+      box-shadow:var(--sh-1);
+      transition:transform var(--t-mid) var(--ease-out), box-shadow var(--t-mid) var(--ease-soft),
+                 border-color var(--t-mid) var(--ease-soft);
+      will-change:transform;
+    }
+    .card-hover:hover{
+      transform:translateY(-2px);
+      box-shadow:var(--sh-lift);
+    }
+    .card-hover:active{transform:translateY(0) scale(.996);box-shadow:var(--sh-1)}
+    .card-hover:hover .rec-title{color:var(--brand-deep)}
+
+    /* ============ 按钮 ============ */
+    .btn{
+      position:relative;overflow:hidden;
+      display:inline-flex;align-items:center;justify-content:center;gap:6px;
+      border-radius:var(--r-sm);padding:8px 14px;
+      font-size:13.5px;font-weight:500;line-height:1.2;
+      white-space:nowrap;
+      /* 回弹曲线带过冲：按下压缩、松手弹回，比线性缓动更有手感 */
+      transition:transform .26s cubic-bezier(.34,1.56,.64,1), box-shadow var(--t-mid) var(--ease-soft),
+                 background-color var(--t-mid) var(--ease-soft), border-color var(--t-mid) var(--ease-soft),
+                 color var(--t-mid) var(--ease-soft);
+      will-change:transform;
+    }
+    .btn:active{transform:scale(.92);transition-duration:.08s}
+    .btn-primary{
+      background:var(--brand);color:#fff;
+      box-shadow:0 1px 2px rgba(13,148,136,.2), inset 0 1px 0 rgba(255,255,255,.14);
+    }
+    .btn-primary:hover{
+      transform:translateY(-1px) scale(1.025);
+      background:var(--brand-deep);
+      box-shadow:var(--sh-brand);
+    }
+    .btn-ghost{background:var(--surface);box-shadow:inset 0 0 0 1px var(--line-2);color:var(--ink-2)}
+    .btn-ghost:hover{
+      box-shadow:inset 0 0 0 1px var(--brand-edge), 0 4px 12px -8px rgba(13,148,136,.4);
+      color:var(--brand-deep);background:rgba(255,255,255,.9);
+      transform:translateY(-1px);
+    }
+    .btn-quiet{color:var(--ink-3);padding:6px 8px;border-radius:var(--r-sm)}
+    .btn-quiet:hover{color:var(--ink-1);background:rgba(26,29,25,.045)}
+
+    /* 涟漪 */
+    .ripple{
+      position:absolute;border-radius:50%;transform:scale(0);pointer-events:none;
+      background:rgba(255,255,255,.42);animation:rippleOut .62s var(--ease-out) forwards;
+    }
+    .btn-ghost .ripple{background:rgba(13,148,136,.14)}
+    @keyframes rippleOut{to{transform:scale(2.4);opacity:0}}
+
+    /* ============ 表单控件 ============ */
+    /* 输入框统一成「白底 + 内描边」，聚焦时描边换品牌色并加一圈淡光。
+       之前各页圆角 8/9/10px、背景 white / paper 混着用，看着像不同人做的。 */
+    .field{
+      display:block;background:#fff;border-radius:10px;padding:8px 12px;
+      font-size:13.5px;line-height:1.5;color:var(--ink-1);outline:none;
+      box-shadow:inset 0 0 0 1px rgba(26,29,25,.09);
+      transition:box-shadow var(--t-mid) var(--ease-soft), background-color var(--t-mid);
+    }
+    .field::placeholder{color:var(--ink-4)}
+    .field:hover{box-shadow:inset 0 0 0 1px rgba(26,29,25,.17)}
+    .field:focus{box-shadow:inset 0 0 0 1px var(--brand-edge), 0 0 0 4px rgba(13,148,136,.09)}
+    .field-sm{padding:6px 10px;font-size:13px;border-radius:9px}
+    /* 右侧有图标时给文字留位，免得长文本压到图标下面 */
+    .field-icon{padding-right:2.4rem}
+
+    /* 自绘下拉。原生 select 的弹层各浏览器长得不一样、也做不了展开动画，
+       全站统一成「按钮 + 面板」，行为见页面底部的初始化脚本。 */
+    .picker{position:relative;display:inline-block}
+    .picker.is-block{display:block;width:100%}
+    .picker-btn{
+      display:inline-flex;width:100%;align-items:center;justify-content:space-between;gap:6px;
+      background:#fff;color:var(--ink-2);outline:none;cursor:pointer;
+      box-shadow:inset 0 0 0 1px rgba(26,29,25,.09);
+      transition:box-shadow var(--t-mid) var(--ease-soft), color var(--t-mid);
+    }
+    .picker-btn:hover{box-shadow:inset 0 0 0 1px rgba(26,29,25,.17)}
+    .picker-btn[aria-expanded="true"]{
+      color:var(--ink-1);
+      box-shadow:inset 0 0 0 1px var(--brand-edge), 0 0 0 3px rgba(13,148,136,.09);
+    }
+    .picker-btn [data-picker-caret]{transition:transform .3s var(--ease-out)}
+    .picker-btn[aria-expanded="true"] [data-picker-caret]{transform:rotate(180deg)}
+
+    .picker-menu{
+      opacity:0;transform:translateY(-8px) scale(.94);transform-origin:top;
+      transition:opacity .18s var(--ease-out), transform .3s cubic-bezier(.34,1.56,.64,1);
+    }
+    .picker-menu.open{opacity:1;transform:none}
+    .picker-opt{opacity:0;transform:translateY(-10px)}
+    .picker-menu.open .picker-opt{
+      opacity:1;transform:none;
+      transition:opacity .2s var(--ease-out), transform .34s cubic-bezier(.34,1.56,.64,1),
+                 background-color .18s, color .18s;
+      transition-delay:calc(var(--i) * 30ms);
+    }
+    .picker-opt[aria-selected="true"]{color:var(--brand-deep);font-weight:500}
+    .picker-opt[aria-selected="true"] .picker-tick{opacity:1}
+
+    /* ============ 统计卡 ============ */
+    .stat{
+      background:var(--surface);border-radius:var(--r-md);box-shadow:var(--sh-1);
+      position:relative;overflow:hidden;
+      transition:transform var(--t-mid) var(--ease-out), box-shadow var(--t-mid) var(--ease-soft);
+    }
+    .stat::after{
+      content:"";position:absolute;inset:0;border-radius:inherit;opacity:0;
+      background:linear-gradient(180deg,rgba(13,148,136,.055),transparent 62%);
+      transition:opacity var(--t-mid) var(--ease-soft);pointer-events:none;
+    }
+    .stat:hover{transform:translateY(-3px);box-shadow:var(--sh-lift)}
+    .stat:hover::after{opacity:1}
+    .stat-num{font-variant-numeric:tabular-nums;letter-spacing:-.03em;transition:color var(--t-mid) var(--ease-soft)}
+    .stat:hover .stat-num{color:var(--brand-deep)}
+
+    /* ============ 行 / 标签 ============ */
+    .hover-tint{transition:background var(--t-mid) var(--ease-soft), color var(--t-mid) var(--ease-soft), transform var(--t-mid) var(--ease-out)}
+    .hover-tint:hover{background:var(--brand-tint);color:var(--brand-deep);transform:translateX(2px)}
+
+    .chip{transition:transform var(--t-fast) var(--ease-out), box-shadow var(--t-mid) var(--ease-soft),
+                     color var(--t-mid) var(--ease-soft)}
+    .chip:hover{transform:translateY(-1px);box-shadow:inset 0 0 0 1px var(--brand-edge), 0 6px 14px -10px rgba(13,148,136,.5);color:var(--brand-deep)}
+    .chip:active{transform:translateY(0) scale(.985)}
+
+    .arrow{transition:transform var(--t-mid) var(--ease-out)}
+    .group:hover .arrow{transform:translateX(3px)}
+    .rec-title{transition:color var(--t-mid) var(--ease-soft)}
+
+    /* 导航：悬停右移、按下回弹、选中实心且入场带位移 */
+    .nav-item{
+      transition:background-color .22s var(--ease-soft), color .22s var(--ease-soft),
+                 transform .3s cubic-bezier(.34,1.56,.64,1), box-shadow .24s var(--ease-soft);
+    }
+    .nav-item:not(.is-active):hover{transform:translateX(3px)}
+    .nav-item:not(.is-active):active{transform:translateX(3px) scale(.975)}
+    .nav-item.is-active{animation:navIn .55s var(--ease-out) both}
+    @keyframes navIn{from{opacity:.25;transform:translateX(-10px)}to{opacity:1;transform:none}}
+
+    .link-u{position:relative}
+    .link-u::after{content:"";position:absolute;left:0;bottom:-2px;height:1px;width:0;background:var(--brand);transition:width var(--t-mid) var(--ease-out)}
+    .link-u:hover::after{width:100%}
+
+    /* ============ 入场：方向由 data-anim 决定 ============
+       up（默认）/ down / left / right / zoom。
+       只在 html.js 存在时才把元素设为透明 —— 脚本失效时内容照常可见，
+       这是上一次「按分类列表一片空白」的教训：入场效果绝不能盖住内容。 */
+    .fade-up{opacity:0;transform:translateY(14px);animation:fadeUp .62s var(--ease-out) forwards;animation-delay:var(--d,0s)}
+    @keyframes fadeUp{to{opacity:1;transform:none}}
+
+    html.js .reveal{opacity:0;transition:opacity 1.15s var(--ease-out),transform 1.15s var(--ease-out);transition-delay:var(--d,0s)}
+    html.js .reveal:not([data-anim]),
+    html.js .reveal[data-anim="up"]{transform:translateY(44px)}
+    html.js .reveal[data-anim="down"]{transform:translateY(-44px)}
+    html.js .reveal[data-anim="left"]{transform:translateX(-52px)}
+    html.js .reveal[data-anim="right"]{transform:translateX(52px)}
+    html.js .reveal[data-anim="zoom"]{transform:scale(.94)}
+    html.js .reveal.in{opacity:1;transform:none}
+
+    /* 动态插入的列表项：用 animation 而不是 transition + observer，
+       因为局部刷新出来的节点不会被页面加载时的观察器接管（旧 bug 的根因）。 */
+    .rec-in{opacity:0;animation:recUp .95s var(--ease-out) both;animation-delay:var(--d,0s)}
+    .rec-in[data-anim="left"]{animation-name:recLeft}
+    .rec-in[data-anim="right"]{animation-name:recRight}
+    .rec-in[data-anim="down"]{animation-name:recDown}
+    @keyframes recUp{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:none}}
+    @keyframes recDown{from{opacity:0;transform:translateY(-26px)}to{opacity:1;transform:none}}
+    @keyframes recLeft{from{opacity:0;transform:translateX(-52px)}to{opacity:1;transform:none}}
+    @keyframes recRight{from{opacity:0;transform:translateX(52px)}to{opacity:1;transform:none}}
+
+    .swap-in{animation:swapIn .34s var(--ease-out) both}
+    @keyframes swapIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+    /* 列表逐条进入 */
+    .stagger>*{opacity:0;animation:fadeUp .5s var(--ease-out) forwards}
+    .stagger>*:nth-child(1){animation-delay:.02s}
+    .stagger>*:nth-child(2){animation-delay:.05s}
+    .stagger>*:nth-child(3){animation-delay:.08s}
+    .stagger>*:nth-child(4){animation-delay:.11s}
+    .stagger>*:nth-child(5){animation-delay:.14s}
+    .stagger>*:nth-child(6){animation-delay:.17s}
+    .stagger>*:nth-child(7){animation-delay:.2s}
+    .stagger>*:nth-child(8){animation-delay:.23s}
+
+    /* ============ 图表 ============ */
+    /* 环形图是填充路径，段与段首尾咬合、中间不留缝；悬停靠提亮，不缩放整段
+       （缩放会让相邻两段的咬合错位）。 */
+    .donut-seg{cursor:pointer;transition:filter var(--t-mid) var(--ease-soft)}
+    /* 只有脚本跑起来时才先藏起来：页面脚本按 data-* 上的角度把路径从 0 张到最终位置，
+       张开过程中逐帧给 opacity。脚本没跑（或用户禁用 JS）时元素直接可见，
+       不会出现「图上什么都没有」。 */
+    html.js .donut-seg{opacity:0;animation:donutSafe .01s 1.2s forwards}
+    html.js .donut-seg.in{opacity:1}
+    /* 兜底：万一页面脚本先崩在别处，1.2 秒后也把环露出来，不至于空着 */
+    @keyframes donutSafe{to{opacity:1}}
+    .donut-seg:hover{filter:brightness(1.06) saturate(1.14)}
+    /* 悬停图例时压暗其余段，把「这一块是哪一类」直接指出来。
+       这里用的是 filter 里的 opacity()，和上面的 opacity 属性互不影响。 */
+    .donut.has-focus .donut-seg{filter:saturate(.28) brightness(1.04) opacity(.45)}
+    .donut.has-focus .donut-seg.is-focus{filter:none}
+
+    .meter{height:5px;border-radius:99px;background:rgba(26,29,25,.055);overflow:hidden}
+    .meter>i{display:block;height:100%;border-radius:99px;transform:scaleX(0);transform-origin:left;
+             transition:transform .9s var(--ease-out)}
+
+    .ring-fg{stroke-dasharray:var(--len);stroke-dashoffset:var(--len);animation:ringGrow 1.2s var(--ease-out) forwards;animation-delay:.1s}
+    @keyframes ringGrow{to{stroke-dashoffset:var(--off)}}
+
+    /* ============ 顶栏 ============ */
+    header.scrolled{box-shadow:0 1px 0 rgba(26,29,25,.06), 0 12px 28px -26px rgba(26,29,25,.5);background:rgba(250,250,248,.92)}
+
+    /* ============ 骨架屏 ============ */
+    .skeleton{position:relative;overflow:hidden;background:rgba(26,29,25,.045);border-radius:10px}
+    .skeleton::after{
+      content:"";position:absolute;inset:0;transform:translateX(-100%);
+      background:linear-gradient(90deg,transparent,rgba(255,255,255,.7),transparent);
+      animation:shimmer 1.4s var(--ease-soft) infinite;
+    }
+    @keyframes shimmer{to{transform:translateX(100%)}}
+
+    /* ============ 打字光标 ============ */
+    .caret::after{
+      content:"";display:inline-block;width:2px;height:1em;margin-left:2px;
+      vertical-align:-2px;background:var(--brand);animation:blink 1s steps(1) infinite;
+    }
+    @keyframes blink{50%{opacity:0}}
+
+    /* ============ 页面跳转过渡（View Transitions，不支持则自然降级） ============ */
+    @view-transition{navigation:auto}
+    ::view-transition-old(root){animation:vtOut .18s var(--ease-std) both}
+    ::view-transition-new(root){animation:vtIn .36s var(--ease-out) both}
+    @keyframes vtOut{to{opacity:0;transform:translateY(-8px)}}
+    @keyframes vtIn{from{opacity:0;transform:translateY(14px)}}
+
+    /* 路由加载条：点击链接/提交表单时出现，跳转后新页面自然重置 */
+    #routebar{
+      position:fixed;left:0;top:0;height:2px;width:0;z-index:60;
+      background:linear-gradient(90deg,var(--brand),#5EEAD4);
+      box-shadow:0 0 12px rgba(13,148,136,.55);
+      opacity:0;border-radius:0 2px 2px 0;
+      transition:width .55s var(--ease-out), opacity .25s var(--ease-soft);
+    }
+    #routebar.on{opacity:1}
+
+    /* 内容区轻微进入（与 View Transition 叠加也不突兀） */
+    main{animation:mainIn .4s var(--ease-out) both}
+    @keyframes mainIn{from{opacity:0}to{opacity:1}}
+
+    /* 侧栏与顶栏的导航项 */
+    .nav-item{transition:background var(--t-mid) var(--ease-soft), color var(--t-mid) var(--ease-soft),
+                          transform var(--t-mid) var(--ease-out), box-shadow var(--t-mid) var(--ease-soft)}
+    .nav-item:hover{transform:translateX(2px)}
+
+    .no-scrollbar{scrollbar-width:none;-ms-overflow-style:none}
+    .no-scrollbar::-webkit-scrollbar{display:none}
+
+    /* ============ 降级 ============ */
+    @media (prefers-reduced-motion: reduce){
+      *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
+      .reveal,html.js .reveal{opacity:1;transform:none}
+      .donut-seg,.stagger>*{opacity:1}
+      main{animation:none}
+    }
+  </style>
+</head>
+<body>
+
+<div id="routebar"></div>
+
+{% set p = request.url.path %}
+{% set ICONS = {
+  'home':    'M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z',
+  'search':  'M10.5 4a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM15.5 15.5 20 20',
+  'book':    'M4 5.5A1.5 1.5 0 0 1 5.5 4H10v16H5.5A1.5 1.5 0 0 1 4 18.5zM10 4h8.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H10',
+  'spark':   'M12 3.5 14 9l5.5 2-5.5 2-2 5.5-2-5.5L4.5 11 10 9z',
+  'trophy':  'M8 4h8v4a4 4 0 0 1-8 0zM8 5.5H5.5V7a3 3 0 0 0 3 3M16 5.5h2.5V7a3 3 0 0 1-3 3M10 16h4M9 20h6',
+  'folder':  'M3 7.5A1.5 1.5 0 0 1 4.5 6h4l1.8 2H19.5A1.5 1.5 0 0 1 21 9.5v7A1.5 1.5 0 0 1 19.5 18h-15A1.5 1.5 0 0 1 3 16.5z',
+  'star':    'M12 4l2.3 4.9 5.2.7-3.8 3.7.9 5.2-4.6-2.5-4.6 2.5.9-5.2L4.5 9.6l5.2-.7z',
+  'cards':   'M7 8.5h10M7 12h10M7 15.5h6M5 4.5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-13a1 1 0 0 1 1-1z',
+  'chat':    'M4 6.5A1.5 1.5 0 0 1 5.5 5h13A1.5 1.5 0 0 1 20 6.5v8a1.5 1.5 0 0 1-1.5 1.5H9l-5 3.5z',
+  'target':  'M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 11.5a.5.5 0 1 0 0 1 .5.5 0 0 0 0-1z'
+} %}
+{% macro nav(href, label, active, icon=None) -%}
+<a href="{{ href }}"
+   class="nav-item group relative flex items-center gap-2.5 rounded-[10px] px-3 py-[7px] text-[13.5px]
+          {% if active %}is-active bg-[var(--brand)] font-medium text-white shadow-[0_8px_18px_-10px_rgba(13,148,136,.9)]{% else %}text-[var(--ink-2)] hover:bg-white/80 hover:text-[var(--ink-1)] hover:shadow-[0_1px_2px_rgba(26,29,25,.05)]{% endif %}">
+  {% if icon %}
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"
+       stroke-linejoin="round" aria-hidden="true"
+       class="h-[15px] w-[15px] shrink-0 transition-transform duration-300
+              {% if active %}text-white{% else %}text-[var(--ink-4)] group-hover:scale-110 group-hover:text-[var(--brand)]{% endif %}">
+    <path d="{{ ICONS.get(icon, '') }}"/>
+  </svg>
+  {% endif %}
+  <span class="truncate">{{ label }}</span>
+  {% if active %}<span class="ml-auto h-1.5 w-1.5 rounded-full bg-white/85"></span>{% endif %}
+</a>
+{%- endmacro %}
+
+<div class="min-h-screen md:flex">
+{% block shell %}
+
+  <aside class="hidden shrink-0 border-r border-[rgba(26,29,25,.06)] bg-white/55 backdrop-blur-md md:sticky md:top-0 md:flex md:h-screen md:w-56 md:flex-col">
+    <a href="/" class="group flex h-16 items-center gap-2.5 px-5">
+      <span class="flex h-7 w-7 items-center justify-center rounded-[9px] text-[13px] font-semibold text-white shadow-[0_4px_10px_-4px_rgba(13,148,136,.7)] transition-transform duration-300 group-hover:scale-105"
+            style="background:linear-gradient(145deg,var(--brand),var(--brand-deep))">G</span>
+      <span class="text-[14.5px] font-semibold tracking-[-.015em]">成长档案</span>
+    </a>
+    <nav class="flex-1 space-y-0.5 overflow-y-auto px-2.5 pb-3">
+      {{ nav('/', '概览', p == '/', 'home') }}
+      {{ nav('/search', '检索', p.startswith('/search'), 'search') }}
+      <div class="eyebrow px-3 pb-1.5 pt-5">分类</div>
+      {{ nav('/c/course', '课程', p.startswith('/c/course'), 'book') }}
+      {{ nav('/c/skill', '技能', p.startswith('/c/skill'), 'spark') }}
+      {{ nav('/c/award', '竞赛', p.startswith('/c/award'), 'trophy') }}
+      {{ nav('/c/project', '项目', p.startswith('/c/project'), 'folder') }}
+      {{ nav('/c/trait', '特长', p.startswith('/c/trait'), 'star') }}
+      <div class="eyebrow px-3 pb-1.5 pt-5">能力</div>
+      {{ nav('/cards', '要点卡', p.startswith('/cards'), 'cards') }}
+      {{ nav('/ask', '提问', p.startswith('/ask'), 'chat') }}
+      {{ nav('/match', '岗位匹配', p.startswith('/match'), 'target') }}
+    </nav>
+    <div class="mx-2 mb-2 rounded-[10px] px-3 py-2.5 text-[11.5px] text-[var(--ink-4)]">
+      {% if user %}
+      <div class="truncate">{{ user.email }}</div>
+      <form action="/logout" method="post" class="mt-1"><button class="transition-colors hover:text-[var(--ink-1)]">退出</button></form>
+      {% endif %}
+    </div>
+  </aside>
+
+  <div class="flex min-w-0 flex-1 flex-col">
+
+    <header id="topbar" class="sticky top-0 z-20 border-b border-[rgba(26,29,25,.055)] bg-[rgba(250,250,248,1)]/82 backdrop-blur-xl transition-[box-shadow,background] duration-300">
+      <div class="mx-auto flex h-14 max-w-4xl items-center gap-3 px-4 md:px-6">
+        <a href="/" class="shrink-0 text-[14.5px] font-semibold tracking-tight md:hidden">成长档案</a>
+        <form action="/search" method="get" class="ml-auto min-w-0 flex-1 md:flex-none">
+          <div id="q-wrap" class="relative w-full transition-[width] duration-300 md:w-[232px]">
+            <input id="q-input" name="q" value="{{ q or '' }}" placeholder="搜索成长记录…"
+                   class="w-full rounded-[10px] bg-white/70 py-2 pl-3.5 pr-11 text-[13.5px] text-[var(--ink-1)] shadow-[inset_0_0_0_1px_rgba(26,29,25,.09)] outline-none transition-all duration-300 placeholder:text-[var(--ink-4)] focus:bg-white focus:shadow-[inset_0_0_0_1px_var(--brand-edge),0_0_0_4px_rgba(13,148,136,.09)]">
+            <button type="submit" aria-label="搜索"
+                    class="absolute right-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-[var(--ink-4)] transition-all duration-200 hover:bg-[var(--brand-tint)] hover:text-[var(--brand-deep)] active:scale-90">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                   stroke-linecap="round" class="h-4 w-4">
+                <circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 4.5 4.5"/>
+              </svg>
+            </button>
+          </div>
+        </form>
+      </div>
+      <div class="no-scrollbar overflow-x-auto border-t border-[rgba(26,29,25,.045)] px-3 py-2 md:hidden">
+        <div class="flex gap-1.5 whitespace-nowrap text-xs">
+          {% for href, label in [('/', '概览'), ('/search', '检索'), ('/c/course', '课程'), ('/c/skill', '技能'), ('/c/award', '竞赛'), ('/c/project', '项目'), ('/c/trait', '特长'), ('/cards', '要点卡'), ('/ask', '提问'), ('/match', '匹配'), ('/new', '加资料')] %}
+          <a href="{{ href }}"
+             class="rounded-full px-3 py-1.5 transition-all duration-200 active:scale-95 {% if p == href or (href != '/' and p.startswith(href)) %}bg-[var(--brand)] text-white shadow-[0_6px_14px_-8px_rgba(13,148,136,.9)]{% else %}bg-white/70 text-[var(--ink-2)] shadow-[inset_0_0_0_1px_rgba(26,29,25,.07)]{% endif %}">{{ label }}</a>
+          {% endfor %}
+        </div>
+      </div>
+    </header>
+
+    <main class="mx-auto w-full max-w-4xl flex-1 px-4 py-8 md:px-6">
+      {% block content %}{% endblock %}
+    </main>
+
+    <footer class="mx-auto w-full max-w-4xl px-4 pb-12 text-[11.5px] text-[var(--ink-4)] md:px-6">
+      记下来不算数。能在面试里讲清楚，才算。
+    </footer>
+  </div>
+</div>
+{% endblock %}
+
+<!-- 阅读进度 -->
+<div id="progress" class="pointer-events-none fixed left-0 top-0 z-50 h-[2px] w-0 rounded-r-full opacity-0 transition-opacity duration-300"
+     style="background:linear-gradient(90deg,var(--brand),#5EEAD4)"></div>
+
+<!-- 回到顶部 -->
+<button id="toTop" type="button" aria-label="回到顶部"
+        class="fixed bottom-6 right-5 z-40 hidden h-10 w-10 items-center justify-center rounded-full bg-white/90 text-[var(--ink-3)] shadow-[0_2px_10px_rgba(26,29,25,.12),inset_0_0_0_1px_rgba(26,29,25,.06)] backdrop-blur transition-all duration-300 hover:-translate-y-0.5 hover:text-[var(--brand-deep)] hover:shadow-[0_8px_20px_rgba(26,29,25,.14)] active:scale-95">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="h-4 w-4"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+</button>
+
+<script>
+  /* ---------- 顶栏投影 / 阅读进度 / 回到顶部 ---------- */
+  const topbar = document.getElementById('topbar');
+  const bar = document.getElementById('progress');
+  const toTop = document.getElementById('toTop');
+  const onScroll = () => {
+    const y = window.scrollY;
+    if (topbar) topbar.classList.toggle('scrolled', y > 8);
+    const h = document.documentElement.scrollHeight - window.innerHeight;
+    if (bar) {
+      const pct = h > 0 ? Math.min(100, (y / h) * 100) : 0;
+      bar.style.width = pct + '%';
+      bar.style.opacity = pct > 1.5 ? '1' : '0';
+    }
+    if (toTop) {
+      const show = y > 420;
+      toTop.classList.toggle('hidden', !show);
+      toTop.classList.toggle('flex', show);
+    }
+  };
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+  if (toTop) toTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+
+  /* ---------- 按钮涟漪 ---------- */
+  document.addEventListener('pointerdown', (e) => {
+    const btn = e.target.closest('.btn');
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    const size = Math.max(rect.width, rect.height);
+    const span = document.createElement('span');
+    span.className = 'ripple';
+    span.style.width = span.style.height = size + 'px';
+    span.style.left = (e.clientX - rect.left - size / 2) + 'px';
+    span.style.top = (e.clientY - rect.top - size / 2) + 'px';
+    btn.appendChild(span);
+    setTimeout(() => span.remove(), 640);
+  });
+
+  /* ---------- 路由加载条：跳转前给出即时反馈 ---------- */
+  const routebar = document.getElementById('routebar');
+  let routeTimer = null;
+  function startRoute() {
+    if (!routebar) return;
+    routebar.classList.add('on');
+    routebar.style.transition = 'none';
+    routebar.style.width = '0%';
+    void routebar.offsetWidth;
+    routebar.style.transition = 'width .6s cubic-bezier(.16,1,.3,1), opacity .25s ease';
+    routebar.style.width = '72%';
+    clearInterval(routeTimer);
+    routeTimer = setInterval(() => {
+      const w = parseFloat(routebar.style.width) || 0;
+      if (w < 92) routebar.style.width = (w + Math.random() * 4).toFixed(1) + '%';
+    }, 380);
+  }
+  function endRoute() {
+    if (!routebar) return;
+    clearInterval(routeTimer);
+    routebar.style.width = '100%';
+    setTimeout(() => {
+      routebar.classList.remove('on');
+      setTimeout(() => { routebar.style.width = '0%'; }, 240);
+    }, 180);
+  }
+  window.addEventListener('pageshow', endRoute);
+
+  document.addEventListener('click', (e) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+    const a = e.target.closest('a[href]');
+    if (!a || a.target === '_blank' || a.hasAttribute('download')) return;
+    const href = a.getAttribute('href');
+    if (!href || href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:')) return;
+    if (a.origin !== location.origin) return;
+    if (a.pathname === location.pathname && a.search === location.search) return;
+    startRoute();
+  });
+
+  document.addEventListener('submit', (e) => {
+    if (e.target.dataset.noRoute !== undefined) return;
+    startRoute();
+  });
+
+  /* ---------- 滚动揭示 ---------- */
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(en => {
+      if (en.isIntersecting) { en.target.classList.add('in'); io.unobserve(en.target); }
+    });
+  }, { rootMargin: '0px 0px -6% 0px', threshold: 0.04 });
+  const scanReveal = (root) => {
+    (root || document).querySelectorAll('.reveal:not(.in)').forEach(el => io.observe(el));
+  };
+  scanReveal();
+  // 局部刷新（列表翻页、切换排序）后必须重新扫一遍，否则新节点永远停在 opacity:0
+  window.scanReveal = scanReveal;
+
+  /* ---------- 数字滚动 ---------- */
+  const animateCount = (el) => {
+    const target = parseInt(el.dataset.count, 10);
+    if (isNaN(target) || target === 0) { el.textContent = target || 0; return; }
+    const dur = 820, t0 = performance.now();
+    const step = (now) => {
+      const k = Math.min(1, (now - t0) / dur);
+      const eased = 1 - Math.pow(1 - k, 4);
+      el.textContent = Math.round(target * eased);
+      if (k < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  };
+  /* 快捷键：/ 聚焦搜索框（不在输入态时） */
+  const qInput = document.getElementById('q-input');
+  document.addEventListener('keydown', (e) => {
+    if (!qInput) return;
+    const tag = (document.activeElement && document.activeElement.tagName) || '';
+    const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+    if (e.key === '/' && !typing) { e.preventDefault(); qInput.focus(); qInput.select(); }
+    if (e.key === 'Escape' && document.activeElement === qInput) qInput.blur();
+  });
+
+  document.querySelectorAll('[data-count]').forEach(el => {
+    const obs = new IntersectionObserver((ents) => {
+      ents.forEach(en => { if (en.isIntersecting) { animateCount(en.target); obs.unobserve(en.target); } });
+    }, { threshold: 0.4 });
+    obs.observe(el);
+  });
+</script>
+
+
+<script>
+/* ============================================================
+   自绘下拉
+   页面上所有 [data-picker] 共用这一份逻辑：点按钮开合、选一项写回 hidden，
+   再派发 change —— 需要联动的地方照常监听就行。
+   ============================================================ */
+(() => {
+  document.querySelectorAll('[data-picker]').forEach((root) => {
+    const trigger = root.querySelector('[data-picker-trigger]');
+    const menu = root.querySelector('[data-picker-menu]');
+    const input = root.querySelector('[data-picker-value]');
+    const label = root.querySelector('[data-picker-label]');
+    if (!trigger || !menu || !input || !label) return;
+    const opts = [...menu.querySelectorAll('.picker-opt')];
+    if (!opts.length) return;
+
+    const select = (opt) => {
+      input.value = opt.dataset.value;
+      label.textContent = opt.dataset.label;
+      opts.forEach(o => o.setAttribute('aria-selected', o === opt ? 'true' : 'false'));
+    };
+    select(opts.find(o => o.dataset.value === input.value) || opts[0]);
+
+    let timer = null;
+    const open = () => {
+      clearTimeout(timer);
+      menu.classList.remove('hidden');
+      void menu.offsetWidth;          // 先落一次布局，过渡才会被触发
+      menu.classList.add('open');
+      trigger.setAttribute('aria-expanded', 'true');
+    };
+    const close = () => {
+      menu.classList.remove('open');
+      trigger.setAttribute('aria-expanded', 'false');
+      timer = setTimeout(() => menu.classList.add('hidden'), 220);
+    };
+
+    trigger.addEventListener('click', () => {
+      trigger.getAttribute('aria-expanded') === 'true' ? close() : open();
+    });
+    opts.forEach(opt => opt.addEventListener('click', () => {
+      select(opt);
+      close();
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    }));
+    document.addEventListener('click', (e) => {
+      if (!root.contains(e.target) && trigger.getAttribute('aria-expanded') === 'true') close();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && trigger.getAttribute('aria-expanded') === 'true') close();
+    });
+  });
+})();
+
+/* ============================================================
+   顶栏搜索框
+   空着时窄，聚焦撑开一点，输入越多越宽 —— 长关键词不会被截半。
+   ============================================================ */
+(() => {
+  const input = document.getElementById('q-input');
+  const wrap = input && input.closest('#q-wrap');
+  if (!wrap) return;
+
+  const MIN = 232, FOCUS_MIN = 300, MAX = 440;
+  // 用一段隐藏文本来量，浏览器自己处理字体解析，比 canvas 拼 font 字符串可靠
+  const probe = document.createElement('span');
+  probe.setAttribute('aria-hidden', 'true');
+  probe.style.cssText = 'position:absolute;left:-9999px;top:0;white-space:pre;pointer-events:none';
+  document.body.appendChild(probe);
+
+  const fit = () => {
+    if (window.innerWidth < 768) {   // 小屏交给 flex 撑满，不插手
+      wrap.style.width = '';
+      return;
+    }
+    const cs = getComputedStyle(input);
+    probe.style.fontFamily = cs.fontFamily;
+    probe.style.fontSize = cs.fontSize;
+    probe.style.fontWeight = cs.fontWeight;
+    probe.style.letterSpacing = cs.letterSpacing;
+    probe.textContent = input.value || input.placeholder || '';
+    // 左右内边距 + 右侧搜索按钮（32px）再留一点余量
+    const chrome = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight) + 38;
+    const want = probe.offsetWidth + chrome;
+    const focused = document.activeElement === input;
+    wrap.style.width = Math.min(MAX, Math.max(focused ? FOCUS_MIN : MIN, want)) + 'px';
+  };
+
+  ['input', 'focus', 'blur'].forEach(ev => input.addEventListener(ev, fit));
+  window.addEventListener('resize', fit);
+  fit();
+})();
+
+/* ============================================================
+   点击粒子迸发
+   只给「可点的控件」加：导航项、按钮、筛选胶囊、标签。
+   颜色取自图表同一套色板，避免每次点击跳出一组不相干的颜色。
+   ============================================================ */
+(() => {
+  const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduce) return;
+
+  const PALETTE = ['#0FB5A8', '#4C7DF5', '#F5A623', '#F0567F', '#84C93C', '#8B5CF6'];
+  // 导航用主色系，不给它彩虹色，否则侧栏会显得花
+  const BRAND = ['#0FB5A8', '#3FC9BD', '#4C7DF5', '#0F766E', '#8B5CF6'];
+
+  let canvas = null, ctx = null, dpr = 1, raf = 0;
+  const parts = [];
+
+  const ensureCanvas = () => {
+    if (canvas) return;
+    canvas = document.createElement('canvas');
+    canvas.id = 'burst-canvas';
+    canvas.setAttribute('aria-hidden', 'true');
+    Object.assign(canvas.style, {
+      position: 'fixed', inset: '0', width: '100%', height: '100%',
+      pointerEvents: 'none', zIndex: '9999',
+    });
+    document.body.appendChild(canvas);
+    ctx = canvas.getContext('2d');
+    resize();
+    window.addEventListener('resize', resize);
+  };
+
+  function resize() {
+    if (!canvas) return;
+    dpr = Math.min(2, window.devicePixelRatio || 1);
+    canvas.width = Math.floor(innerWidth * dpr);
+    canvas.height = Math.floor(innerHeight * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  const spawn = (x, y, colors, count) => {
+    ensureCanvas();
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const v = 1.2 + Math.random() * 3.4;
+      parts.push({
+        x, y,
+        vx: Math.cos(a) * v,
+        vy: Math.sin(a) * v - 0.6,
+        r: 2.0 + Math.random() * 2.6,
+        life: 1,
+        decay: 0.014 + Math.random() * 0.016,
+        color: colors[(Math.random() * colors.length) | 0],
+      });
+    }
+    if (!raf) raf = requestAnimationFrame(tick);
+  };
+
+  function tick() {
+    ctx.clearRect(0, 0, innerWidth, innerHeight);
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const p = parts[i];
+      p.vx *= 0.965;
+      p.vy = p.vy * 0.965 + 0.06;   // 轻微重力，颗粒会往下坠一点
+      p.x += p.vx;
+      p.y += p.vy;
+      p.life -= p.decay;
+      if (p.life <= 0) { parts.splice(i, 1); continue; }
+      ctx.globalAlpha = Math.max(0, p.life);
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r * (0.5 + p.life * 0.5), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    if (parts.length) {
+      raf = requestAnimationFrame(tick);
+    } else {
+      cancelAnimationFrame(raf);
+      raf = 0;
+      ctx.clearRect(0, 0, innerWidth, innerHeight);
+    }
+  }
+
+  document.addEventListener('pointerdown', (e) => {
+    if (e.button !== undefined && e.button !== 0) return;
+    const el = e.target.closest('.nav-item, .btn, .chip, .sort-btn, .sector-row, [data-burst]');
+    if (!el || el.disabled) return;
+    // 目标很小的时候从元素中心发，点边缘也不会偏出太多
+    const box = el.getBoundingClientRect();
+    const x = box.width < 40 || box.height < 24
+      ? box.left + box.width / 2
+      : e.clientX;
+    const y = box.height < 24 ? box.top + box.height / 2 : e.clientY;
+    const colors = el.classList.contains('nav-item') ? BRAND : PALETTE;
+    spawn(x, y, colors, el.classList.contains('nav-item') ? 16 : 20);
+  }, { passive: true });
+})();
+</script>
+
+</body>
+</html>

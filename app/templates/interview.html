@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}面试预演 · {{ doc.title }}{% endblock %}
+{% block content %}
+
+<div class="mx-auto max-w-3xl">
+  <a href="/doc/{{ doc.id }}" class="group inline-flex items-center gap-1 text-xs text-[var(--ink-3)] transition-colors hover:text-[var(--brand-deep)]">
+    <span class="arrow inline-block rotate-180 group-hover:-translate-x-1">→</span> 返回详情
+  </a>
+  <div class="eyebrow mt-3">面试预演</div>
+  <h1 class="page-title mt-1.5">面试官会怎么追问</h1>
+  <p class="mt-1 text-[13px] text-[var(--ink-3)]">
+    基于《{{ doc.title }}》，标出你答得上来的程度 —— 答不上来的地方，比答案更值钱。
+  </p>
+
+  {% if error %}
+  <div class="mt-5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{{ error }}</div>
+  {% endif %}
+
+  {% if not result %}
+  <form method="post" action="/doc/{{ doc.id }}/interview" class="mt-6">
+    <button class="btn btn-primary"
+            onclick="this.textContent='正在预演，约 20 秒…';this.classList.add('opacity-60');this.form.submit();">
+      开始预演
+    </button>
+    <span class="ml-3 text-xs text-[var(--ink-4)]">只依据记录内容，不替你编答案</span>
+  </form>
+  {% else %}
+
+  {% set s = result.stats %}
+  <div class="mt-6 grid grid-cols-4 gap-3">
+    {% for label, value, tone in [('总数', s.total, 'text-[var(--ink-1)]'), ('能答', s.can_answer, 'text-emerald-700'), ('答得浅', s.shallow, 'text-amber-700'), ('答不上来', s.cannot, 'text-red-600')] %}
+    <div class="stat px-4 py-3">
+      <div class="text-2xl font-medium tabular-nums {{ tone }}">{{ value }}</div>
+      <div class="mt-0.5 text-xs text-[var(--ink-3)]">{{ label }}</div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if s.cannot > 0 %}
+  <div class="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+    有 {{ s.cannot }} 个问题你可能答不上来。这说明这条记录写得不够细 ——
+    <a href="/doc/{{ doc.id }}/edit" class="underline">去补充细节</a>，比背答案有用。
+  </div>
+  {% endif %}
+
+  <ol class="mt-6 space-y-3">
+    {% for q in result.questions %}
+    <li class="card card-hover rec-in p-4" data-anim="{{ 'right' if loop.index0 is odd else 'left' }}"
+        style="--d:{{ (loop.index0 % 6) * 0.04 }}s">
+      <div class="flex items-start gap-3">
+        <span class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[rgba(26,29,25,.05)] text-xs text-[var(--ink-3)]">{{ loop.index }}</span>
+        <div class="flex-1">
+          <div class="flex items-start justify-between gap-3">
+            <p class="text-[15px] font-medium leading-relaxed">{{ q.q }}</p>
+            <span class="shrink-0 rounded px-1.5 py-0.5 text-xs
+              {% if q.status == 'can_answer' %}bg-emerald-50 text-emerald-700
+              {% elif q.status == 'shallow' %}bg-amber-50 text-amber-700
+              {% else %}bg-red-50 text-red-600{% endif %}">{{ q.status_label }}</span>
+          </div>
+          {% if q.probe %}<p class="mt-1 text-xs text-[var(--ink-3)]">考察点：{{ q.probe }}</p>{% endif %}
+
+          {% if q.points %}
+          <ul class="mt-2 space-y-1">
+            {% for p in q.points %}
+            <li class="text-sm leading-relaxed text-[var(--ink-2)]">· {{ p }}</li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+
+          {% if q.missing %}
+          <p class="mt-2 rounded bg-[rgba(26,29,25,.03)] px-2 py-1.5 text-xs text-[var(--ink-3)]">
+            记录里缺：{{ q.missing }}
+          </p>
+          {% endif %}
+        </div>
+      </div>
+    </li>
+    {% endfor %}
+  </ol>
+
+  <form method="post" action="/doc/{{ doc.id }}/interview" class="mt-6">
+    <button class="btn btn-ghost">重新预演</button>
+  </form>
+  {% endif %}
+</div>
+
+{% endblock %}

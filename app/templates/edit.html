@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}编辑 · {{ doc.title }}{% endblock %}
+{% block content %}
+{% from "_ui.html" import picker %}
+
+<div class="mx-auto max-w-2xl">
+  <a href="/doc/{{ doc.id }}" class="group inline-flex items-center gap-1 text-xs text-[var(--ink-3)] transition-colors hover:text-[var(--brand-deep)]">
+    <span class="arrow inline-block rotate-180 group-hover:-translate-x-1">→</span> 返回详情
+  </a>
+  <div class="eyebrow mt-3">编辑</div>
+  <h1 class="page-title mt-1.5">改这条记录</h1>
+  <p class="mt-1 text-[13px] text-[var(--ink-3)]">
+    改动正文会重建这篇记录的切片、索引与要点卡，要点卡需要重新提炼。
+  </p>
+
+  {% if error %}
+  <div class="mt-5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{{ error }}</div>
+  {% endif %}
+
+  <form method="post" action="/doc/{{ doc.id }}/edit" class="mt-6 space-y-3">
+    <div class="grid grid-cols-2 gap-3">
+      {{ picker('kind', kinds.items()|list, doc.kind, size='md', full=True, menu_class='w-full') }}
+      <input name="period" type="date" title="发生时间（精确到日，可留空）" value="{{ doc.period or '' }}"
+             class="field w-full">
+    </div>
+    <input name="title" value="{{ doc.title }}" required
+           class="field w-full">
+    <textarea name="body" rows="14" required
+              class="field w-full">{{ doc.body }}</textarea>
+    <input name="tags" value="{{ tag_text }}" placeholder="标签，用逗号分隔"
+           class="field w-full">
+
+    <div class="flex items-center gap-3">
+      <button class="btn btn-primary">保存并重建索引</button>
+      <a href="/doc/{{ doc.id }}" class="text-sm text-[var(--ink-3)] hover:text-[var(--ink-1)]">取消</a>
+    </div>
+  </form>
+
+  <form method="post" action="/doc/{{ doc.id }}/delete" class="mt-10 border-t border-[rgba(26,29,25,.08)] pt-5"
+        onsubmit="return confirm('删除后不可恢复，连同要点卡一起移除。确定删除？');">
+    <button class="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm text-red-600 hover:bg-red-50">
+      删除这条记录
+    </button>
+  </form>
+</div>
+
+{% endblock %}

@@ -1,0 +1,716 @@
+{% extends "base.html" %}
+{% block title %}概览 · 成长档案{% endblock %}
+{% block content %}
+{% from "_ui.html" import picker %}
+
+<style>
+  /* 放大时给卡片让出高度，避免内容被裁在框外 */
+  #cap-card{transition:min-height .38s var(--ease)}
+  #cap-card.zoomed{min-height:392px}
+  @media (max-width:640px){ #cap-card.zoomed{min-height:600px} }
+  .ov-seg,.cc-ring{transition:stroke-dasharray .95s var(--ease)}
+
+  /* 雷达图：轴名淡入；轴和右侧清单指到哪条一起亮，方便把图和数对上 */
+  .radar-lb{font-size:11.5px;fill:var(--ink-2);opacity:0;
+    animation:radarLb .5s var(--ease-out) forwards}
+  @keyframes radarLb{to{opacity:1}}
+  [data-ax]{transition:stroke .18s var(--ease-out), stroke-width .18s var(--ease-out)}
+  [data-ax].on{stroke:#0D9488;stroke-width:2.5}
+  [data-spoke-row].is-lit{background:var(--brand-tint)}
+
+  .zoom-in{animation:zoomIn .3s var(--ease) both}
+  @keyframes zoomIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+</style>
+
+{% if deleted %}
+<div class="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-800 fade-up">
+  记录已删除，相关的切片、索引与要点卡一并清除。
+</div>
+{% endif %}
+
+<div class="flex items-start justify-between gap-4 reveal" data-anim="left">
+  <div class="min-w-0">
+    <div class="eyebrow">Overview</div>
+    <h1 class="page-title mt-1.5">你的成长档案</h1>
+    <p class="mt-1 text-[13px] text-[var(--ink-3)]">
+      {% if has_data %}
+        {{ stats.docs }} 条记录、{{ stats.chunks }} 个知识片段、{{ stats.cards }} 张要点卡。
+      {% else %}
+        先记下第一条 —— 哪怕只是一句话。
+      {% endif %}
+    </p>
+  </div>
+  <a href="/new" class="btn btn-primary shrink-0">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
+         class="h-4 w-4"><path d="M12 5v14M5 12h14"/></svg>
+    <span class="hidden sm:inline">添加记录</span>
+    <span class="sm:hidden">添加</span>
+  </a>
+</div>
+
+<form method="post" action="/quick" id="quick-form"
+      class="mt-6 flex flex-wrap items-center gap-2 rounded-[14px] bg-[rgba(13,148,136,.055)] p-2 shadow-[inset_0_0_0_1px_rgba(13,148,136,.13)] transition-all duration-300 focus-within:bg-[rgba(13,148,136,.075)] focus-within:shadow-[inset_0_0_0_1px_var(--brand-edge),0_0_0_4px_rgba(13,148,136,.09)] reveal" data-anim="down"
+      style="--d:.04s">
+  <div class="flex min-w-0 flex-1 basis-full items-center gap-2 sm:basis-auto">
+    <button type="button" id="quick-file-btn" title="添加文件：txt / md / docx / pdf / 图片"
+            aria-label="添加文件"
+            class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/70 text-[var(--brand-deep)] shadow-[inset_0_0_0_1px_rgba(13,148,136,.16)] transition-all duration-200 hover:scale-105 hover:bg-white hover:shadow-[0_6px_14px_-8px_rgba(13,148,136,.65)] active:scale-95">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+           class="h-4 w-4"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
+    <input name="text" required placeholder="一句话记下来，细节稍后补…"
+           class="min-w-0 flex-1 rounded-[10px] bg-white/80 px-3 py-2 text-[13.5px] text-[var(--ink-1)] shadow-[inset_0_0_0_1px_rgba(26,29,25,.07)] outline-none transition-all duration-200 placeholder:text-[var(--ink-4)] focus:bg-white focus:shadow-[inset_0_0_0_1px_var(--brand-edge)]">
+  </div>
+  {# 下拉用的是全站同一个组件，样式与开合逻辑都在 base.html 里 #}
+  <div class="shrink-0">
+    {{ picker('kind', kinds.items()|list, 'course', uid='quick-kind',
+              menu_class='w-[132px]', trigger_class='active:scale-[.97]') }}
+  </div>
+  <button class="btn btn-primary">记下</button>
+</form>
+
+<!-- 加号走这条路：选文件后直接提交到 /upload，不用先跳添加页 -->
+<form id="quick-upload" method="post" action="/upload" enctype="multipart/form-data" class="hidden">
+  <input type="file" name="file" id="quick-file-input"
+         accept=".txt,.md,.markdown,.docx,.pdf,.png,.jpg,.jpeg,.webp,.bmp,.gif">
+  <input type="hidden" name="kind" id="quick-file-kind" value="course">
+</form>
+
+<div class="mt-6 grid grid-cols-3 gap-3">
+  {% for label, value, href, hint, anim in [
+      ('条成长记录', stats.docs, '#records', '全部记录', 'left'),
+      ('个知识片段', stats.chunks, '/search', '去检索', 'up'),
+      ('张要点卡', stats.cards, '/cards', '看全部', 'right')] %}
+  <a href="{{ href }}" class="stat group block px-3.5 py-3.5 sm:px-4 reveal" data-anim="{{ anim }}" style="--d:{{ 0.06 + loop.index0 * 0.05 }}s">
+    <div class="stat-num text-[23px] font-semibold leading-none sm:text-[27px]" data-count="{{ value }}">0</div>
+    <div class="mt-2.5 flex items-baseline justify-between gap-1">
+      <span class="whitespace-nowrap text-[11px] text-[var(--ink-3)] sm:text-[12px]">{{ label }}</span>
+      <span class="hidden shrink-0 text-[11px] text-[var(--brand)] opacity-0 transition-all duration-300 group-hover:opacity-100 sm:inline">{{ hint }} <span class="arrow inline-block">→</span></span>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+
+{% if has_data %}
+<!-- 能力分布 -->
+<section id="cap-card" class="card relative mt-5 overflow-hidden p-5 reveal" data-anim="right">
+  <div class="flex items-center justify-between gap-3">
+    <h2 class="section-title">能力分布</h2>
+    <button type="button" id="cap-count"
+            class="group flex items-center gap-1.5 rounded-full bg-[rgba(13,148,136,.075)] px-2.5 py-1 text-[11.5px] font-medium text-[var(--brand-deep)] transition-all duration-200 hover:bg-[rgba(13,148,136,.13)] active:scale-95">
+      <span class="tnum">{{ stats.docs }} 条记录</span>
+      <span class="text-[10px] opacity-50 transition-transform duration-200 group-hover:translate-x-0.5">→</span>
+    </button>
+  </div>
+
+  <div class="mt-4 flex flex-col items-center gap-6 sm:flex-row sm:items-center sm:justify-center">
+    <div id="donut-hit" role="button" tabindex="0" aria-label="放大能力分布"
+         class="group relative shrink-0 cursor-zoom-in rounded-full p-1 transition-transform duration-200 hover:scale-[1.035] active:scale-[0.99]">
+      {{ pie_svg|safe }}
+      <div class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+        <span class="tnum text-[19px] font-semibold leading-none">{{ stats.docs }}</span>
+        <span class="mt-1 text-[10px] tracking-wide text-[var(--ink-3)]">条记录</span>
+      </div>
+    </div>
+
+    <div class="w-full min-w-0 sm:w-[318px] sm:flex-none">
+      <ul class="space-y-0.5">
+        {% for it in legend %}
+        <li>
+          <button type="button" data-idx="{{ loop.index0 }}" data-key="{{ it.key }}"
+                  class="sector-row group flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors duration-200 hover:bg-[var(--brand-tint)]">
+            <span class="h-2.5 w-2.5 shrink-0 rounded-full transition-transform duration-200 group-hover:scale-125" style="background:{{ it.color }}"></span>
+            <span class="min-w-0 flex-1 truncate text-left text-[var(--ink-2)] transition-colors group-hover:text-[var(--brand-deep)]">{{ it.label }}{% if it.merged %}<span class="ml-1 text-[10px] font-normal text-[var(--ink-4)]">含 {{ it.tags|length }} 类</span>{% endif %}</span>
+            <span class="tnum shrink-0 text-[11px] text-[var(--ink-4)]">{{ it.value }}</span>
+            <span class="tnum w-10 shrink-0 text-right text-[11px] text-[var(--ink-3)]">
+              {% if stats.docs %}{{ (it.value / stats.docs * 100) | round(0) | int }}%{% else %}0%{% endif %}
+            </span>
+            <span class="arrow shrink-0 text-[11px] text-[var(--brand)] opacity-0 transition-opacity group-hover:opacity-100">→</span>
+          </button>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+
+  <!-- 放大层：左图右标签 -->
+  <div id="zoom-overlay" class="absolute inset-0 z-20 hidden overflow-y-auto bg-white/[.985] backdrop-blur-sm"></div>
+</section>
+
+{% if cards %}
+<section id="cards" class="mt-6 reveal" data-anim="left">
+  <div class="flex items-end justify-between gap-3">
+    <div class="min-w-0">
+      <h2 class="section-title">要点卡</h2>
+      <p class="mt-0.5 text-[12px] text-[var(--ink-3)]">从记录里提炼出的成果与能力表述，可直接用于简历和面试。</p>
+    </div>
+    <div class="flex shrink-0 items-center gap-2">
+      <a href="/cards" class="btn btn-ghost text-xs">查看全部
+        <span class="tnum text-[var(--ink-4)]">{{ cards_total }}</span>
+        <span class="arrow inline-block">→</span>
+      </a>
+    </div>
+  </div>
+  <div class="mt-3 grid gap-2.5 sm:grid-cols-2">
+    {% for c in cards %}
+    <a href="/doc/{{ c.document_id }}"
+       class="card card-hover group rec-in flex h-full flex-col p-4"
+       data-anim="{{ 'right' if loop.index0 is odd else 'left' }}"
+       style="--d:{{ (loop.index0 % 4) * 0.05 }}s">
+      <div class="flex min-w-0 items-center gap-1.5 text-[11px] text-[var(--ink-4)]">
+        <span class="shrink-0 rounded-[4px] bg-[rgba(26,29,25,.045)] px-1.5 py-0.5 text-[var(--ink-3)]">
+          {{ kinds.get(c.kind, c.kind) }}
+        </span>
+        <span class="min-w-0 truncate">{{ c.doc_title }}</span>
+      </div>
+      <p class="mt-2 text-[14px] font-medium leading-relaxed text-[var(--ink-1)]">{{ c.what }}</p>
+      {% if c.result %}<p class="mt-1.5 text-[12.5px] leading-relaxed text-[var(--ink-2)]"><span class="text-[var(--ink-4)]">结果</span> {{ c.result }}</p>{% endif %}
+      {% if c.ability %}<p class="mt-1 text-[12.5px] leading-relaxed text-[var(--ink-2)]"><span class="text-[var(--ink-4)]">证明</span> {{ c.ability }}</p>{% endif %}
+      {% if c.todo %}<p class="mt-1 text-[11.5px] leading-relaxed text-amber-700/75"><span class="opacity-70">还可补充</span> {{ c.todo }}</p>{% endif %}
+    </a>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<section id="records" class="mt-6 reveal" data-anim="up">
+  <div class="flex items-center justify-between">
+    <div class="flex items-baseline gap-2">
+      <h2 class="section-title">全部成长记录</h2>
+      <span class="text-xs text-[var(--ink-4)]">{{ total }}</span>
+    </div>
+    <div class="flex items-center gap-0.5 rounded-full bg-[rgba(26,29,25,.045)] p-0.5 text-[12px]">
+      <button data-sort="time" class="sort-btn rounded-full px-3 py-1 transition-all duration-200">最新</button>
+      <button data-sort="kind" class="sort-btn rounded-full px-3 py-1 transition-all duration-200">按分类</button>
+    </div>
+  </div>
+
+  <div id="records-body" class="mt-3">
+    {% include "_records.html" %}
+  </div>
+</section>
+{% else %}
+<div class="mt-6 rounded-2xl border border-dashed border-[rgba(26,29,25,.11)] bg-white/60 px-6 py-16 text-center reveal">
+  <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl"
+       style="background:linear-gradient(145deg,rgba(13,148,136,.13),rgba(13,148,136,.045))">
+    <span class="text-lg">✦</span>
+  </div>
+  <p class="mt-4 text-sm text-[var(--ink-2)]">档案还是空的。可以先载入一份示例看看效果。</p>
+  <form action="/seed" method="post" class="mt-4">
+    <button class="btn btn-primary">载入示例档案</button>
+  </form>
+</div>
+{% endif %}
+
+<script>
+const SECTORS = {{ legend|tojson }};
+const TOTAL = {{ stats.docs }};
+// 雷达图的轴：映射表里的能力域固定成轴，没有记录的域也在（0 值落在圆心）。
+// 映射表读不到时退回已有的扇区，至少不至于画出空图。
+const SPOKES = ({{ spokes|tojson }}) || [];
+const RADAR = SPOKES.length ? SPOKES : SECTORS.map(s => ({ label: s.label, value: s.value, key: s.key }));
+let SORT = {{ sort|tojson }};
+
+/* 明度调节：k>0 混白变浅，k<0 混黑加深。
+   同心圆需要「深→浅」的完整跨度为的是让每一层都看得见，
+   只用混白的话内层会淡到接近背景。 */
+function tint(hex, k) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  const m = c => k >= 0 ? Math.round(c + (255 - c) * k) : Math.round(c * (1 + k));
+  return `rgb(${m(r)},${m(g)},${m(b)})`;
+}
+
+/* 按 pathLength=100 归一化，dash 单位直接就是百分比，动画也简单 */
+function ring(cx, cy, r, w, color, pct, delay, round, startDeg) {
+  const cap = round ? 'stroke-linecap="round"' : '';
+  const rot = -90 + (startDeg || 0);
+  return `<circle class="ov-seg" cx="${cx}" cy="${cy}" r="${r}" fill="none" pathLength="100"
+    stroke="${color}" stroke-width="${w}" ${cap}
+    transform="rotate(${rot} ${cx} ${cy})"
+    stroke-dasharray="0 100" stroke-dashoffset="0"
+    data-to="${pct.toFixed(2)} ${(100 - pct).toFixed(2)}"
+    style="transition-delay:${delay}s"></circle>`;
+}
+
+/* 角度换弧度。雷达图的轴间隔、环形图的顶点坐标都按度数算，换算集中在这里。 */
+const RAD = Math.PI / 180;
+
+/* 环形图的一段：与后端 charts._slice_path 同一套算法。
+   前端再算一遍只是为了做「从 0 张开」的入场动画 —— 服务端输出的仍是最终形状，
+   所以脚本没跑的时候图依然完整可见。 */
+function polarPt(cx, cy, r, deg) {
+  const a = (deg - 90) * RAD;
+  return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+}
+
+/* 圆弧命令，超过 180° 拆段：单条 A 在起点=终点时不绘制，整圈会画不出来 */
+function arcRun(cx, cy, r, from, to) {
+  const span = to - from;
+  const n = Math.max(1, Math.ceil(Math.abs(span) / 179.9));
+  const sweep = span >= 0 ? 1 : 0;
+  let out = '';
+  for (let i = 1; i <= n; i++) {
+    const [x, y] = polarPt(cx, cy, r, from + span * i / n);
+    out += `A${r.toFixed(2)} ${r.toFixed(2)} 0 0 ${sweep} ${x.toFixed(2)} ${y.toFixed(2)} `;
+  }
+  return out;
+}
+
+/* 端面：控制点落在端点的圆弧切线上，与内外弧相切、无折角 */
+function faceRun(cx, cy, rA, rB, deg, bulge) {
+  const rad = bulge * RAD;
+  const len = 4 * ((rA + rB) / 2) * Math.abs(rad) / 3;
+  const sgn = rad >= 0 ? 1 : -1;
+  const [ax, ay] = polarPt(cx, cy, rA, deg);
+  const [bx, by] = polarPt(cx, cy, rB, deg);
+  const tx = Math.cos(deg * RAD) * sgn * len;
+  const ty = Math.sin(deg * RAD) * sgn * len;
+  return `C${(ax + tx).toFixed(2)} ${(ay + ty).toFixed(2)} `
+    + `${(bx + tx).toFixed(2)} ${(by + ty).toFixed(2)} ${bx.toFixed(2)} ${by.toFixed(2)}`;
+}
+
+function slicePath(cx, cy, rOut, rIn, start, end, headB, tailB) {
+  if (Math.abs(end - start) > 359.5) { headB = 0; tailB = 0; }
+  const [x, y] = polarPt(cx, cy, rIn, start);
+  return `M${x.toFixed(2)} ${y.toFixed(2)} `
+    + arcRun(cx, cy, rIn, start, end)
+    + faceRun(cx, cy, rIn, rOut, end, tailB) + ' '
+    + arcRun(cx, cy, rOut, end, start)
+    + faceRun(cx, cy, rOut, rIn, start, headB) + ' Z';
+}
+
+function closeZoom() {
+  const ov = document.getElementById('zoom-overlay');
+  const card = document.getElementById('cap-card');
+  ov.classList.add('hidden');
+  ov.classList.remove('flex');
+  ov.innerHTML = '';
+  card.classList.remove('zoomed');
+  card.style.minHeight = '';
+}
+
+/* 第 i 层（共 n 层）的明度系数：由深到浅，跨度为 -0.2 → 0.5 */
+function ringShade(i, n) {
+  if (n <= 1) return 0;
+  return -0.25 + (0.85 * i) / (n - 1);
+}
+
+/* 整体视图：六边形雷达图。
+   环形图回答「各占多少」，雷达图回答「强在哪、缺在哪」——
+   轴固定成能力域，没记录的域落在圆心，形状本身就是一张强弱剖面。 */
+function openOverview() {
+  const cx = 160, cy = 150, R = 96;
+  const n = RADAR.length || 1;
+  const step = 360 / n;
+  const maxV = Math.max(1, ...RADAR.map(s => s.value));
+  const weak = RADAR.filter(s => !s.value).length;
+  const unassigned = Math.max(0, TOTAL - RADAR.reduce((a, s) => a + s.value, 0));
+
+  const ang = i => (-90 + i * step) * RAD;
+  const at = (i, r) => [cx + r * Math.cos(ang(i)), cy + r * Math.sin(ang(i))];
+  // 颜色由后端按映射表固定分配，和概览的小环是同一套，切换时不跳色
+  const colorOf = s => s.color || '#C3BFB4';
+
+  // 数据多边形：进度 k 从 0 到 1 时整体从圆心张开
+  const shape = k => RADAR.map((s, i) => {
+    const [x, y] = at(i, (s.value / maxV) * R * k);
+    return `${x.toFixed(2)},${y.toFixed(2)}`;
+  }).join(' ');
+
+  const rings = [0.34, 0.67, 1].map(k => {
+    const pts = RADAR.map((_, i) => {
+      const [x, y] = at(i, R * k);
+      return `${x.toFixed(2)},${y.toFixed(2)}`;
+    }).join(' ');
+    const edge = k === 1;
+    return `<polygon points="${pts}" fill="${edge ? 'rgba(13,148,136,.022)' : 'none'}"
+      stroke="rgba(26,29,25,${edge ? .15 : .085})" stroke-width="1"/>`;
+  }).join('');
+
+  // 空轴的线用虚线：一眼看出这条轴上还没有内容，比读 0 更直观
+  const axes = RADAR.map((s, i) => {
+    const [x, y] = at(i, R);
+    return `<line data-ax="${i}" x1="${cx}" y1="${cy}" x2="${x.toFixed(2)}" y2="${y.toFixed(2)}"
+      stroke="rgba(26,29,25,${s.value ? .1 : .12})" stroke-width="1"
+      ${s.value ? '' : 'stroke-dasharray="3 3"'}/>`;
+  }).join('');
+
+  const labels = RADAR.map((s, i) => {
+    const a = ang(i);
+    const [x, y] = at(i, R + 11);
+    const c = Math.cos(a);
+    const anchor = Math.abs(c) < 0.3 ? 'middle' : (c > 0 ? 'start' : 'end');
+    return `<text class="radar-lb" x="${x.toFixed(1)}" y="${y.toFixed(1)}"
+      text-anchor="${anchor}" dominant-baseline="middle"
+      style="animation-delay:${(0.1 + i * 0.04).toFixed(2)}s">${s.label}</text>`;
+  }).join('');
+
+  const dots = RADAR.map((s, i) => {
+    const on = s.value > 0;
+    return `<circle class="radar-dot" data-spoke="${i}" cx="${cx}" cy="${cy}" r="${on ? 4.8 : 3}"
+      fill="#fff" stroke="${on ? colorOf(s) : '#C3BFB4'}" stroke-width="${on ? 2.4 : 1.8}"/>`;
+  }).join('');
+
+  // 热区覆盖整条轴，比只点中那个小圆点好按
+  const hits = RADAR.map((s, i) => {
+    const [x, y] = at(i, R);
+    return `<line class="radar-hit" data-hit="${i}" x1="${cx}" y1="${cy}"
+      x2="${x.toFixed(2)}" y2="${y.toFixed(2)}" stroke="transparent" stroke-width="24"
+      ${s.value ? 'pointer-events="stroke" style="cursor:pointer"' : ''}/>`;
+  }).join('');
+
+  const rows = RADAR.map((s, i) => {
+    const on = s.value > 0;
+    const c = colorOf(s);
+    const pct = TOTAL ? Math.round(s.value / TOTAL * 100) : 0;
+    return `<li>
+      <button type="button" data-spoke-row="${i}" ${on ? '' : 'disabled tabindex="-1"'}
+              class="ov-row group flex w-full items-center gap-2.5 rounded-lg px-2 py-[7px] text-left transition-colors duration-200 ${on ? 'hover:bg-[var(--brand-tint)]' : 'cursor-default'}">
+        <span class="h-[7px] w-[7px] shrink-0 rounded-full"
+              style="${on ? `background:${c}` : 'box-shadow:inset 0 0 0 1.5px #C3BFB4'}"></span>
+        <span class="min-w-0 flex-1 truncate text-[12.5px] transition-colors ${on ? 'text-[var(--ink-2)] group-hover:text-[var(--brand-deep)]' : 'text-[var(--ink-4)]'}">${s.label}</span>
+        <span class="tnum w-5 shrink-0 text-right text-[11.5px] text-[var(--ink-4)]">${s.value}</span>
+        <span class="tnum w-9 shrink-0 text-right text-[12px] font-medium" style="color:${on ? c : 'var(--ink-4)'}">${pct}%</span>
+        <span class="arrow w-3 shrink-0 text-[10px] text-[var(--brand)] ${on ? 'opacity-0 group-hover:opacity-100' : 'opacity-0'} transition-opacity">→</span>
+      </button>
+    </li>`;
+  }).join('');
+
+  const ov = document.getElementById('zoom-overlay');
+  ov.innerHTML = `
+    <div class="flex min-h-full w-full flex-col p-4 sm:p-5">
+      <div class="flex shrink-0 items-center gap-2">
+        <button class="zoom-x flex items-center gap-1 rounded-lg px-1.5 py-1 text-[11.5px] text-[var(--ink-3)] transition-all duration-200 hover:bg-[rgba(26,29,25,.05)] hover:text-[var(--ink-1)] active:scale-95">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="h-3.5 w-3.5"><path d="M15 18l-6-6 6-6"/></svg>
+          关闭
+        </button>
+        <div class="ml-0.5">
+          <div class="text-[13px] font-medium tracking-[-.01em]">能力分布</div>
+          <div class="text-[11px] text-[var(--ink-4)]">${TOTAL} 条记录 · ${RADAR.length} 个能力域${weak ? ` · ${weak} 项待补强` : ''}</div>
+        </div>
+      </div>
+      <div class="flex flex-1 items-center justify-center py-2">
+        <div class="grid w-full items-center gap-6 sm:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
+          <div class="relative mx-auto w-full max-w-[280px] sm:max-w-[320px]">
+            <svg viewBox="0 0 320 300" class="block w-full" style="aspect-ratio:320/300">
+              <defs>
+                <radialGradient id="radarFill" gradientUnits="userSpaceOnUse" cx="${cx}" cy="${cy}" r="${R}">
+                  <stop offset="0" stop-color="#0D9488" stop-opacity=".05"/>
+                  <stop offset="1" stop-color="#0D9488" stop-opacity=".2"/>
+                </radialGradient>
+              </defs>
+              ${rings}
+              <polygon class="radar-area" points="${shape(0)}" fill="url(#radarFill)"
+                       stroke="#0D9488" stroke-width="2" stroke-linejoin="round"/>
+              ${axes}${dots}${labels}${hits}
+            </svg>
+          </div>
+          <div class="min-w-0">
+            <ul class="w-full max-w-[360px] space-y-0.5">${rows}</ul>
+            ${unassigned ? `<div class="mt-2 px-2 text-[10.5px] leading-relaxed text-[var(--ink-4)]">另有 ${unassigned} 条记录没有归入能力域，未参与雷达图</div>` : ''}
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  show(ov, 404);
+
+  // 所有轴共用一个进度：多边形从圆心整体张开，和分段同步生长是同一套语言
+  const area = ov.querySelector('.radar-area');
+  const dotEls = [...ov.querySelectorAll('.radar-dot')];
+  const t0 = performance.now(), dur = 950;
+  const frame = (now) => {
+    const k = Math.min(1, (now - t0) / dur);
+    const e = 1 - Math.pow(1 - k, 3);
+    area.setAttribute('points', shape(e));
+    dotEls.forEach((d, i) => {
+      const [x, y] = at(i, (RADAR[i].value / maxV) * R * e);
+      d.setAttribute('cx', x.toFixed(2));
+      d.setAttribute('cy', y.toFixed(2));
+    });
+    if (k < 1) requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+
+  // 轴与清单双向联动：指到哪一条，另一侧同时亮起来
+  const axEls = [...ov.querySelectorAll('[data-ax]')];
+  const rowEls = [...ov.querySelectorAll('[data-spoke-row]')];
+  const lit = i => {
+    axEls.forEach((l, j) => l.classList.toggle('on', j === i));
+    rowEls.forEach((r, j) => r.classList.toggle('is-lit', j === i));
+  };
+  const dim = () => lit(-1);
+  // 点轴或点清单行，都进这个能力域的细分视图；0 值的域没有细分可看
+  const go = i => { if (RADAR[i].value > 0) openDetail(RADAR[i].key); };
+
+  ov.querySelectorAll('.radar-hit').forEach((h, i) => {
+    h.addEventListener('mouseenter', () => lit(i));
+    h.addEventListener('mouseleave', dim);
+    h.addEventListener('click', () => go(i));
+  });
+  rowEls.forEach((r, i) => {
+    r.addEventListener('mouseenter', () => lit(i));
+    r.addEventListener('mouseleave', dim);
+    r.addEventListener('click', () => go(i));
+  });
+
+  ov.querySelector('.zoom-x').addEventListener('click', closeZoom);
+}
+
+/* 细分视图：左边同心圆，右边该能力域下的标签与记录。
+   入参可以是扇区下标（外部链接 ?zoom=detail&idx=N），也可以是能力域名（雷达图的轴）。 */
+function openDetail(ref) {
+  const it = typeof ref === 'number' ? SECTORS[ref] : SECTORS.find(s => s.key === ref);
+  if (!it) return;
+  const domainPct = TOTAL ? it.value / TOTAL * 100 : 0;
+  const tags = (it.tags || []);
+  const sum = tags.reduce((s, t) => s + t.n, 0) || it.value;
+
+  const cx = 130, cy = 130;
+  const n = tags.length;
+  const maxR = 120, minR = 56;
+  const step = n > 1 ? (maxR - minR) / (n - 1) : 0;
+  // 环宽贴近层间距，层与层之间只留 2px 缝，形成连续的同心态
+  const sw = n > 1 ? Math.max(7, step - 2) : 15;
+
+  // 每个细分条目一层环，半径由外向内递减，占比 = 该条目 / 本能力域
+  let rings = '';
+  tags.forEach((t, i) => {
+    const r = n === 1 ? 88 : maxR - i * step;
+    const pct = sum ? t.n / sum * 100 : 0;
+    const col = tint(it.color, ringShade(i, n));
+    rings += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="rgba(26,29,25,.075)" stroke-width="${sw}"/>`;
+    rings += ring(cx, cy, r, sw, col, pct, 0.08 + i * 0.09, true, i * 7);
+  });
+  if (!n) {
+    rings = `<circle cx="${cx}" cy="${cy}" r="92" fill="none" stroke="rgba(26,29,25,.06)" stroke-width="12"/>`
+          + ring(cx, cy, 92, 12, it.color, 100, 0.08, true);
+  }
+
+  // 「其他」是由多个能力域合并来的，成员本身就是能力域名而不是标签，
+  // 挂 /search?tag= 会跳到空结果，所以这里只展示占比、不做链接。
+  const merged = !!it.merged;
+  const rows = tags.map((t, i) => {
+    const pct = sum ? t.n / sum * 100 : 0;
+    const col = tint(it.color, ringShade(i, n));
+    const inner = `
+        <span class="h-[7px] w-[7px] shrink-0 rounded-full" style="background:${col}"></span>
+        <span class="min-w-0 flex-1 truncate text-[12.5px] text-[var(--ink-2)]">${t.name}</span>
+        <span class="tnum w-5 shrink-0 text-right text-[11.5px] text-[var(--ink-4)]">${t.n}</span>
+        <span class="tnum w-9 shrink-0 text-right text-[12px] font-medium" style="color:${col}">${Math.round(pct)}%</span>`;
+    return `<li>${merged
+      ? `<div class="flex items-center gap-2.5 rounded-lg px-2 py-[7px]">${inner}</div>`
+      : `<a href="/search?tag=${encodeURIComponent(t.name)}" class="group flex items-center gap-2.5 rounded-lg px-2 py-[7px] transition-colors duration-200 hover:bg-[rgba(26,29,25,.035)]">${inner}</a>`}</li>`;
+  }).join('');
+
+  const recs = (it.records || []).map(r =>
+    `<a href="/doc/${r.id}" class="max-w-[168px] truncate text-[var(--ink-2)] transition-colors hover:text-[var(--brand-deep)] hover:underline">${r.title}</a>`
+  ).join('<span class="text-[var(--ink-4)]">·</span>');
+
+  const ov = document.getElementById('zoom-overlay');
+  ov.innerHTML = `
+    <div class="flex min-h-full w-full flex-col p-4 sm:p-5">
+      <div class="flex shrink-0 items-center gap-2">
+        <button class="zoom-back flex items-center gap-1 rounded-lg px-1.5 py-1 text-[11.5px] text-[var(--ink-3)] transition-all duration-200 hover:bg-[rgba(26,29,25,.05)] hover:text-[var(--ink-1)] active:scale-95">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="h-3.5 w-3.5"><path d="M15 18l-6-6 6-6"/></svg>
+          返回
+        </button>
+        <span class="ml-auto truncate text-[11px] text-[var(--ink-4)]">能力分布 / ${it.label}</span>
+      </div>
+      <div class="flex flex-1 items-center justify-center py-2">
+        <div class="grid w-full items-center gap-6 sm:grid-cols-[minmax(0,220px)_minmax(0,1fr)]">
+          <div class="relative mx-auto aspect-square w-full max-w-[220px]">
+            <svg viewBox="0 0 260 260" class="h-full w-full">${rings}</svg>
+            <div class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-7 text-center">
+              <span id="det-pct" class="tnum text-[26px] font-semibold leading-none text-[var(--ink-1)]">0%</span>
+              <span class="mt-1 max-w-[96px] text-[10.5px] leading-snug text-[var(--ink-2)]">${it.label}</span>
+              <span class="mt-1 text-[10px] text-[var(--ink-4)]">${it.value} 条</span>
+            </div>
+          </div>
+          <div class="min-w-0">
+            <ul class="max-h-[250px] w-full max-w-[400px] space-y-0.5 overflow-y-auto pr-1">${rows || '<li class="px-2 py-1 text-[11px] text-[var(--ink-4)]">这些记录还没有可细分的标签</li>'}</ul>
+          </div>
+        </div>
+      </div>
+      ${recs ? `<div class="flex shrink-0 flex-wrap items-center gap-x-1.5 gap-y-1 border-t border-[rgba(26,29,25,.07)] pt-2 text-[11px] text-[var(--ink-4)]">涉及记录 ${recs}</div>` : ''}
+    </div>`;
+
+  show(ov, 470);
+  requestAnimationFrame(() => {
+    ov.querySelectorAll('.ov-seg').forEach(c => { c.style.strokeDasharray = c.dataset.to; });
+    const label = ov.querySelector('#det-pct');
+    const t0 = performance.now(), dur = 900;
+    const stepFn = (now) => {
+      const k = Math.min(1, (now - t0) / dur);
+      label.textContent = Math.round(domainPct * (1 - Math.pow(1 - k, 3))) + '%';
+      if (k < 1) requestAnimationFrame(stepFn);
+    };
+    requestAnimationFrame(stepFn);
+  });
+
+  ov.querySelector('.zoom-back').addEventListener('click', openOverview);
+}
+
+function show(ov, height) {
+  const card = document.getElementById('cap-card');
+  card.classList.add('zoomed');
+  // 小屏交给 CSS 的固定高度，大屏按视图内容给不同高度
+  card.style.minHeight = window.innerWidth >= 640 && height ? height + 'px' : '';
+  ov.classList.remove('hidden');
+  ov.classList.add('flex');
+  ov.classList.remove('zoom-in');
+  void ov.offsetWidth;
+  ov.classList.add('zoom-in');
+}
+
+function paintSort() {
+  document.querySelectorAll('.sort-btn').forEach(b => {
+    const on = b.dataset.sort === SORT;
+    b.classList.toggle('bg-white', on);
+    b.classList.toggle('shadow-sm', on);
+    b.classList.toggle('text-[var(--ink-1)]', on);
+    b.classList.toggle('text-[var(--ink-3)]', !on);
+  });
+}
+
+async function loadRecords(page) {
+  const box = document.getElementById('records-body');
+  box.innerHTML = '<div class="space-y-2">' +
+    Array.from({ length: 4 }).map(() => '<div class="skeleton h-[54px]"></div>').join('') + '</div>';
+  const res = await fetch(`/partial/records?page=${page}&sort=${SORT}`);
+  if (!res.ok) return;
+  box.innerHTML = await res.text();
+  box.classList.remove('swap-in');
+  void box.offsetWidth;
+  box.classList.add('swap-in');
+  if (window.scanReveal) window.scanReveal(box);
+  bindPager();
+  history.replaceState(null, '', `/?page=${page}&sort=${SORT}`);
+}
+
+
+/* 加号 = 添加文件：选完直接提交到 /upload，类型沿用当前下拉的选项 */
+const fileBtn = document.getElementById('quick-file-btn');
+const fileInput = document.getElementById('quick-file-input');
+const fileForm = document.getElementById('quick-upload');
+if (fileBtn && fileInput && fileForm) {
+  fileBtn.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => {
+    if (!fileInput.files || !fileInput.files.length) return;
+    const kindSel = document.getElementById('quick-kind');
+    document.getElementById('quick-file-kind').value = kindSel ? kindSel.value : 'course';
+    // 大图识别要几秒，给一个明确的等待反馈
+    fileBtn.classList.add('pointer-events-none', 'opacity-60');
+    fileBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" class="h-4 w-4 animate-spin"><path d="M12 3a9 9 0 1 0 9 9"/></svg>';
+    const tip = document.createElement('span');
+    tip.className = 'text-[12px] text-[var(--brand-deep)]';
+    tip.textContent = '正在解析文件…';
+    document.getElementById('quick-form').parentNode.insertBefore(tip, document.getElementById('quick-form').nextSibling);
+    if (fileForm.requestSubmit) fileForm.requestSubmit(); else fileForm.submit();
+  });
+}
+
+function bindPager() {
+  document.querySelectorAll('#records-body .pager').forEach(btn => {
+    btn.addEventListener('click', () => loadRecords(btn.dataset.page));
+  });
+}
+
+const capBtn = document.getElementById('cap-count');
+if (capBtn) capBtn.addEventListener('click', openOverview);
+
+const hit = document.getElementById('donut-hit');
+if (hit) {
+  hit.addEventListener('click', (e) => {
+    const seg = e.target.closest ? e.target.closest('.donut-seg') : null;
+    if (seg) {
+      const idx = SECTORS.findIndex(s => s.key === seg.dataset.key);
+      if (idx >= 0) return openDetail(idx);
+    }
+    openOverview();   // 点圆心 / 空白 → 整体放大
+  });
+  hit.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openOverview(); }
+  });
+}
+document.querySelectorAll('.sector-row').forEach(btn => {
+  btn.addEventListener('click', () => openDetail(parseInt(btn.dataset.idx, 10)));
+});
+
+/* 悬停图例 → 压暗其余段，把这一行对应哪一块直接指出来 */
+const donutEl = document.querySelector('.donut');
+
+/* 环形图入场：五段共用同一个进度，同时从 0 张到各自的角度、同时显影。
+   服务端已经把最终路径画好了，这里按 data-* 上的角度把它重算一遍再动，
+   所以脚本没跑（或用户禁用了动画）时看到的仍是完整的环。 */
+if (donutEl && donutEl.dataset.rout) {
+  const vb = (donutEl.getAttribute('viewBox') || '0 0 0 0').split(/\s+/).map(Number);
+  const dcx = vb[2] / 2, dcy = vb[3] / 2;
+  const rOut = parseFloat(donutEl.dataset.rout);
+  const rIn = parseFloat(donutEl.dataset.rin);
+  const arcs = [...donutEl.querySelectorAll('.donut-seg')].map(el => ({
+    el,
+    a: parseFloat(el.dataset.a),
+    b: parseFloat(el.dataset.b),
+    hb: parseFloat(el.dataset.hb),
+    tb: parseFloat(el.dataset.tb),
+  }));
+  const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const dur = still ? 0 : 820;
+  const t0 = performance.now();
+  const tick = (now) => {
+    const k = dur ? Math.min(1, (now - t0) / dur) : 1;
+    const e = 1 - Math.pow(1 - k, 3);
+    arcs.forEach(s => {
+      s.el.setAttribute('d', slicePath(dcx, dcy, rOut, rIn,
+        s.a, s.a + (s.b - s.a) * e, s.hb * e, s.tb * e));
+      s.el.style.opacity = e.toFixed(3);
+    });
+    if (k < 1) {
+      requestAnimationFrame(tick);
+    } else {
+      arcs.forEach(s => {
+        s.el.style.removeProperty('opacity');
+        s.el.classList.add('in');   // 交回 CSS，悬停压暗才能正常生效
+      });
+    }
+  };
+  requestAnimationFrame(tick);
+}
+
+const clearSegFocus = () => {
+  if (!donutEl) return;
+  donutEl.classList.remove('has-focus');
+  donutEl.querySelectorAll('.donut-seg').forEach(s => s.classList.remove('is-focus'));
+};
+document.querySelectorAll('.sector-row').forEach(row => {
+  row.addEventListener('mouseenter', () => {
+    if (!donutEl) return;
+    donutEl.classList.add('has-focus');
+    donutEl.querySelectorAll('.donut-seg').forEach(s => {
+      s.classList.toggle('is-focus', s.dataset.key === row.dataset.key);
+    });
+  });
+  row.addEventListener('mouseleave', clearSegFocus);
+});
+document.querySelectorAll('.sort-btn').forEach(btn => {
+  btn.addEventListener('click', () => { SORT = btn.dataset.sort; paintSort(); loadRecords(1); });
+});
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  const ov = document.getElementById('zoom-overlay');
+  if (ov.classList.contains('hidden')) return;
+  if (ov.querySelector('.zoom-back')) openOverview(); else closeZoom();
+});
+
+paintSort();
+bindPager();
+
+// 支持直接打开放大视图：/?zoom=overview 或 /?zoom=detail&idx=2
+const ZP = new URLSearchParams(location.search);
+if (ZP.get('zoom') === 'overview') openOverview();
+else if (ZP.get('zoom') === 'detail') openDetail(parseInt(ZP.get('idx') || '0', 10));
+</script>
+
+{% endblock %}

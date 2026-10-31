@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+{% block title %}{{ doc.title }} · 成长档案{% endblock %}
+{% block content %}
+{% set KC = KCOLORS %}
+{% set color = KC.get(doc.kind, '#999') %}
+
+<a href="/" class="group inline-flex items-center gap-1 text-xs text-[var(--ink-3)] transition-colors duration-200 hover:text-[var(--brand-deep)]">
+  <span class="arrow inline-block rotate-180 transition-transform duration-200 group-hover:-translate-x-1">→</span>
+  返回概览
+</a>
+
+<div class="mt-3 flex items-start justify-between gap-4 reveal" data-anim="left">
+  <div class="min-w-0">
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="rounded-md px-1.5 py-0.5 text-[11px]"
+            style="background:{{ color }}1A;color:{{ color }}">{{ kinds.get(doc.kind, doc.kind) }}</span>
+      <span class="text-[11px] text-[var(--ink-4)]">{{ doc.period or doc.created_at[:10] }}</span>
+      {% for t in tags %}
+      <span class="rounded-md bg-[rgba(26,29,25,.045)] px-1.5 py-0.5 text-[11px] text-[var(--ink-3)]">#{{ t.name }}</span>
+      {% endfor %}
+    </div>
+    <h1 class="mt-2 text-[22px] font-semibold leading-snug tracking-tight">{{ doc.title }}</h1>
+  </div>
+  <div class="flex shrink-0 items-center gap-2">
+    <button type="button" id="read-full-btn" class="btn btn-ghost text-xs">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+           stroke-linejoin="round" class="h-3.5 w-3.5"><path d="M4 9V5a1 1 0 0 1 1-1h4M20 9V5a1 1 0 0 0-1-1h-4M4 15v4a1 1 0 0 0 1 1h4M20 15v4a1 1 0 0 1-1 1h-4"/></svg>
+      全屏阅读
+    </button>
+    <a href="/doc/{{ doc.id }}/interview" class="btn btn-ghost text-xs">面试预演</a>
+    <a href="/doc/{{ doc.id }}/edit" class="btn btn-ghost text-xs">编辑</a>
+  </div>
+</div>
+
+{% if note %}
+<div class="mt-4 rounded-xl border-[rgba(26,29,25,.07)] bg-white px-3.5 py-2.5 text-sm text-[var(--ink-2)] fade-up">
+  {{ note }}。检查一下正文有没有识别错的地方，<a href="/doc/{{ doc.id }}/edit" class="link-u text-[var(--brand-deep)]">可以直接改</a>。
+</div>
+{% endif %}
+{% if saved %}
+<div class="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-sm text-emerald-800 fade-up">
+  已保存，切片、索引与向量已重建。
+</div>
+{% endif %}
+{% if quick %}
+<div class="mt-4 rounded-xl border-[rgba(26,29,25,.07)] bg-white px-3.5 py-2.5 text-sm text-[var(--ink-2)] fade-up">
+  已记下。现在可以补充细节 —— <b class="text-[var(--ink-1)]">写得越具体，后面写简历越有用</b>。
+  <a href="/doc/{{ doc.id }}/edit" class="link-u text-[var(--brand-deep)]">补充细节</a>
+</div>
+{% endif %}
+{% if card_msg %}
+<div class="mt-4 rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700 fade-up">{{ card_msg }}</div>
+{% endif %}
+{% if card_ok %}
+<div class="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-sm text-emerald-800 fade-up">
+  已重新提炼，共 {{ cards|length }} 张要点卡。
+</div>
+{% endif %}
+
+{% if img_msg %}
+<div class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-sm text-amber-900 fade-up">{{ img_msg }}</div>
+{% endif %}
+
+{% if files %}
+{% set original = files | selectattr('role', 'equalto', 'original') | first %}
+{% set redrawn = files | selectattr('role', 'equalto', 'redrawn') | first %}
+<section class="card mt-4 overflow-hidden reveal" data-anim="up">
+  <div class="flex flex-wrap items-center justify-between gap-2 border-b border-[rgba(26,29,25,.06)] px-3.5 py-2.5">
+    <div class="flex items-center gap-0.5 rounded-full bg-[rgba(26,29,25,.045)] p-0.5 text-[12px]">
+      <button type="button" data-img="{{ original.url if original else redrawn.url }}"
+              class="img-tab rounded-full px-3 py-1 transition-all duration-200 bg-white text-[var(--ink-1)] shadow-[0_1px_2px_rgba(26,29,25,.09)]">原图</button>
+      {% if redrawn %}
+      <button type="button" data-img="{{ redrawn.url }}"
+              class="img-tab rounded-full px-3 py-1 text-[var(--ink-3)] transition-all duration-200 hover:text-[var(--ink-1)]">重排版</button>
+      {% endif %}
+    </div>
+    <span class="text-[11px] text-[var(--ink-4)]" id="img-hint">图示、笔迹、原件都在图里；正文才是检索依据</span>
+  </div>
+  <div class="bg-[rgba(26,29,25,.025)] p-3">
+    <a href="{{ original.url if original else redrawn.url }}" target="_blank" rel="noopener" class="block">
+      <img id="doc-image" src="{{ original.url if original else redrawn.url }}" alt="{{ doc.title }}"
+           class="mx-auto max-h-[440px] w-auto max-w-full rounded-lg shadow-[0_8px_24px_-16px_rgba(26,29,25,.5)] transition-transform duration-300 hover:scale-[1.01]">
+    </a>
+  </div>
+</section>
+{% endif %}
+
+<article id="doc-article" class="prose-body card mx-auto mt-5 max-w-[700px] p-6 text-[14.5px] reveal sm:p-7" data-anim="up"><div class="doc-full-head"><div class="text-[11px] text-[var(--ink-4)]">{{ kinds.get(doc.kind, doc.kind) }} · {{ doc.period or doc.created_at[:10] }}</div><h2 class="mt-1 text-[19px] font-semibold leading-snug text-[var(--ink-1)]">{{ doc.title }}</h2></div>{{ body_html|safe }}</article>
+
+<button type="button" id="read-full-exit" aria-label="退出全屏"
+        class="fixed bottom-6 right-6 z-[70] hidden items-center gap-2 rounded-full bg-[var(--brand)] px-4 py-2.5 text-[12.5px] font-medium text-white shadow-[0_12px_28px_-12px_rgba(13,148,136,.9)] transition-transform duration-200 hover:scale-105 active:scale-95">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="h-3.5 w-3.5"><path d="M6 6l12 12M18 6L6 18"/></svg>
+  退出全屏
+</button>
+
+<style>
+  /* 全屏阅读：正文足够长时，逐段看比在窄卡片里滚动舒服；
+     文字宽度仍限制在 760px，避免一行太长反而难读。 */
+  html.reading-full body{overflow:hidden}
+  /* 顶栏与侧栏带 backdrop-filter / sticky，会盖在固定层上面；
+     全屏阅读时直接收起来，读完再恢复。 */
+  html.reading-full #topbar,
+  html.reading-full aside,
+  html.reading-full footer{display:none}
+  .doc-full-head{display:none;white-space:normal}
+  html.reading-full .doc-full-head{
+    display:block;max-width:760px;margin:0 auto 22px;padding-bottom:14px;
+    border-bottom:1px solid rgba(26,29,25,.08);
+  }
+  html.reading-full #doc-article{
+    position:fixed;inset:0;z-index:60;margin:0;max-width:none;border-radius:0 !important;
+    border:0;box-shadow:none;overflow-y:auto;background:#fff;
+    /* 正文是纯文本（pre-wrap），没有子元素可以限宽，用左右 padding 把文字夹到 760px */
+    padding:48px max(24px, calc((100vw - 760px) / 2)) 96px;
+  }
+  html.reading-full #read-full-exit{display:inline-flex}
+</style>
+
+<script>
+  /* 全屏阅读：给 html 加一个类即可，正文节点不搬家，滚动位置也不会丢 */
+  const fullBtn = document.getElementById('read-full-btn');
+  const exitBtn = document.getElementById('read-full-exit');
+  const setFull = (on) => {
+    document.documentElement.classList.toggle('reading-full', on);
+    if (on) document.getElementById('doc-article').scrollTop = 0;
+    fullBtn && fullBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  };
+  if (fullBtn) fullBtn.addEventListener('click', () => setFull(true));
+  if (exitBtn) exitBtn.addEventListener('click', () => setFull(false));
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && document.documentElement.classList.contains('reading-full')) setFull(false);
+  });
+
+  /* 原图 / 重绘版切换 */
+  const imgTabs = [...document.querySelectorAll('.img-tab')];
+  const docImage = document.getElementById('doc-image');
+  const imgHint = document.getElementById('img-hint');
+  imgTabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      if (docImage) docImage.src = tab.dataset.img;
+      imgTabs.forEach(x => {
+        const on = x === tab;
+        x.classList.toggle('bg-white', on);
+        x.classList.toggle('text-[var(--ink-1)]', on);
+        x.classList.toggle('shadow-[0_1px_2px_rgba(26,29,25,.09)]', on);
+        x.classList.toggle('text-[var(--ink-3)]', !on);
+      });
+      if (imgHint) {
+        imgHint.textContent = tab.textContent.trim() === '重排版'
+          ? '按识别出的文字重新排版，未改动内容；原图随时可切回看'
+          : '图示、笔迹、原件都在图里；正文才是检索依据';
+      }
+    });
+  });
+
+  const cited = document.getElementById('cited');
+  if (cited) {
+    cited.style.background = 'linear-gradient(180deg,transparent 55%,#FDE68A 55%)';
+    cited.style.borderRadius = '3px';
+    cited.scrollIntoView({ block: 'center' });
+  }
+</script>
+
+<div class="mt-6 flex flex-wrap items-center gap-3 reveal" data-anim="left">
+  <form action="/doc/{{ doc.id }}/cards" method="post">
+    <button class="btn btn-ghost">
+      {% if cards %}重新提炼要点卡{% else %}提炼要点卡{% endif %}
+    </button>
+  </form>
+  <span class="text-xs text-[var(--ink-4)]">只依据原文，出现原文没有的数字会被自动替换</span>
+</div>
+
+{% if cards %}
+<section class="mt-5 reveal" data-anim="right">
+  <div class="flex items-baseline justify-between">
+    <h2 class="section-title">要点卡</h2>
+    <span class="text-xs text-[var(--ink-4)]">{{ cards|length }} 张</span>
+  </div>
+  <div class="mt-3 grid gap-2.5 sm:grid-cols-2">
+    {% for c in cards %}
+    <div class="card card-hover rec-in p-4{% if cards|length == 1 %} sm:col-span-2{% endif %}"
+         data-anim="{{ 'right' if loop.index0 is odd else 'left' }}" style="--d:{{ (loop.index0 % 4) * 0.05 }}s">
+      <p class="text-[14px] font-medium leading-relaxed">{{ c.what }}</p>
+      {% if c.result %}<p class="mt-1.5 text-[12.5px] leading-relaxed text-[var(--ink-2)]">结果：{{ c.result }}</p>{% endif %}
+      {% if c.ability %}<p class="mt-1 text-[12.5px] leading-relaxed text-[var(--ink-2)]">证明：{{ c.ability }}</p>{% endif %}
+      {% if c.todo %}<p class="mt-1 text-[11.5px] leading-relaxed text-amber-700/75">还可补充：{{ c.todo }}</p>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{% endblock %}

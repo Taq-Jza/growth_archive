@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% block title %}要点卡 · 成长档案{% endblock %}
+{% block content %}
+{% set KC = KCOLORS %}
+
+<div class="flex items-start justify-between gap-4 reveal" data-anim="left">
+  <div class="min-w-0">
+    <div class="eyebrow">Highlights</div>
+    <h1 class="page-title mt-1.5">要点卡</h1>
+    <p class="mt-1 text-[13px] text-[var(--ink-3)]">共 {{ total }} 张，全部提炼自你的记录。</p>
+  </div>
+  <a href="/new" class="btn btn-primary shrink-0">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
+         class="h-4 w-4"><path d="M12 5v14M5 12h14"/></svg>
+    <span class="hidden sm:inline">添加记录</span>
+    <span class="sm:hidden">添加</span>
+  </a>
+</div>
+
+<p class="mt-2 max-w-[640px] text-[12px] leading-relaxed text-[var(--ink-3)] fade-up" style="--d:.04s">
+  不是待办清单 —— 每张卡都是一句<b class="font-medium text-[var(--ink-2)]">能直接说进简历或面试的话</b>；「还可补充」只是顺带标出的细节缺口。
+</p>
+
+<div class="mt-4 flex flex-wrap gap-1.5 fade-up" style="--d:.08s">
+  <a href="/cards"
+     class="chip rounded-full px-3 py-1 text-xs {% if not kind %}text-white shadow-sm{% else %}border border-[rgba(26,29,25,.08)] bg-white text-[var(--ink-2)]{% endif %}"
+     {% if not kind %}style="background:var(--brand)"{% endif %}>
+    全部 <span class="{% if not kind %}text-white/70{% else %}text-[var(--ink-4)]{% endif %}">{{ card_total }}</span>
+  </a>
+  {% for value, label in kinds.items() %}
+  <a href="/cards?kind={{ value }}"
+     class="chip rounded-full px-3 py-1 text-xs {% if kind == value %}text-white shadow-sm{% else %}border border-[rgba(26,29,25,.08)] bg-white text-[var(--ink-2)]{% endif %}"
+     {% if kind == value %}style="background:{{ KC.get(value, '#999') }}"{% endif %}>
+    {{ label }} <span class="{% if kind == value %}text-white/70{% else %}text-[var(--ink-4)]{% endif %}">{{ card_counts.get(value, 0) }}</span>
+  </a>
+  {% endfor %}
+</div>
+
+<div class="mt-4 flex items-center justify-between gap-3 fade-up" style="--d:.12s">
+  <span class="text-[11.5px] text-[var(--ink-4)]">
+    {% if folders %}{{ folders|length }} 个标签{% elif tag %}「{{ tag }}」{{ total }} 张{% else %}{{ total }} 张{% if sort == 'time_asc' %} · 最早在前{% else %} · 最新在前{% endif %}{% endif %}
+  </span>
+  <div class="flex items-center gap-0.5 rounded-full bg-[rgba(26,29,25,.045)] p-0.5 text-[12px]">
+    {% for value, label in [('time', '最新'), ('time_asc', '最早'), ('tag', '按标签')] %}
+    <a href="/cards?sort={{ value }}{% if kind %}&kind={{ kind }}{% endif %}"
+       class="rounded-full px-3 py-1 transition-all duration-200
+              {% if sort == value %}bg-white text-[var(--ink-1)] shadow-[0_1px_2px_rgba(26,29,25,.09)]{% else %}text-[var(--ink-3)] hover:text-[var(--ink-1)]{% endif %}">{{ label }}</a>
+    {% endfor %}
+  </div>
+</div>
+
+{% if tag %}
+<div class="mt-3 flex items-center gap-2 rounded-xl bg-[rgba(26,29,25,.035)] px-3 py-2 text-[12px] text-[var(--ink-2)] fade-up">
+  <a href="/cards?sort=tag{% if kind %}&kind={{ kind }}{% endif %}"
+     class="flex items-center gap-1 text-[var(--ink-3)] transition-colors hover:text-[var(--brand-deep)]">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="h-3 w-3"><path d="M15 18l-6-6 6-6"/></svg>
+    所有标签
+  </a>
+  <span class="text-[var(--ink-4)]">/</span>
+  <b class="text-[var(--ink-1)]">{{ tag }}</b>
+  <a href="/cards" class="ml-auto text-[var(--brand)] hover:underline">看全部卡片</a>
+</div>
+{% endif %}
+
+{% if folders %}
+<section class="mt-4 reveal">
+  <div class="grid gap-2.5 sm:grid-cols-2">
+    {% for f in folders %}
+    <a href="/cards?sort=tag&tag={{ f.name|urlencode }}{% if kind %}&kind={{ kind }}{% endif %}"
+       class="card card-hover group rec-in flex flex-col p-4"
+       data-anim="{{ 'right' if loop.index0 is odd else 'left' }}"
+       style="--d:{{ (loop.index0 % 4) * 0.05 }}s">
+      <div class="flex items-center gap-2.5">
+        <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] text-[var(--brand)] transition-transform duration-200 group-hover:scale-105"
+              style="background:var(--brand-tint)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" class="h-4 w-4">
+            <path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4l1.8 2H19.5A1.5 1.5 0 0 1 21 9.5v7A1.5 1.5 0 0 1 19.5 18h-15A1.5 1.5 0 0 1 3 16.5z"/>
+          </svg>
+        </span>
+        <span class="min-w-0 flex-1 truncate text-[13.5px] font-medium text-[var(--ink-1)] transition-colors group-hover:text-[var(--brand-deep)]">{{ f.name }}</span>
+        <span class="tnum shrink-0 text-[11.5px] text-[var(--ink-4)]">{{ f.n }} 张</span>
+        <span class="arrow shrink-0 text-[11px] text-[var(--brand)] opacity-0 transition-opacity group-hover:opacity-100">→</span>
+      </div>
+      {% if f.docs %}
+      <p class="mt-2 line-clamp-2 text-[11.5px] leading-relaxed text-[var(--ink-4)]">
+        {% for d in f.docs %}{{ d.title }}{% if not loop.last %} · {% endif %}{% endfor %}
+      </p>
+      {% endif %}
+    </a>
+    {% endfor %}
+  </div>
+</section>
+
+{% elif cards %}
+<div class="mt-4 grid items-start gap-2.5 sm:grid-cols-2">
+  {% for c in cards %}
+  <div class="card card-hover group rec-in relative flex flex-col p-4"
+       data-card data-anim="{{ 'right' if loop.index0 is odd else 'left' }}"
+       style="--d:{{ (loop.index0 % 4) * 0.05 }}s">
+    <div class="flex min-w-0 items-center gap-1.5 pr-12 text-[11px] text-[var(--ink-4)]">
+      <span class="shrink-0 rounded-[4px] px-1.5 py-0.5"
+            style="background:{{ KC.get(c.kind, '#999') }}14;color:{{ KC.get(c.kind, '#666') }}">{{ kinds.get(c.kind, c.kind) }}</span>
+      <a href="/doc/{{ c.document_id }}"
+         class="min-w-0 flex-1 truncate transition-colors duration-200 hover:text-[var(--brand-deep)]">{{ c.doc_title }}</a>
+      <span class="shrink-0">{{ (c.period or '')[:10] }}</span>
+    </div>
+    <button type="button" class="js-copy absolute right-2.5 top-2.5 rounded-md px-1.5 py-1 text-[10.5px] text-[var(--ink-4)] opacity-0 transition-all duration-200 hover:bg-[var(--brand-tint)] hover:text-[var(--brand-deep)] group-hover:opacity-100 focus-visible:opacity-100"
+            title="复制这一段，可直接粘到简历">复制</button>
+    <p class="mt-2 text-[14px] font-medium leading-relaxed text-[var(--ink-1)]" data-part>{{ c.what }}</p>
+    {% if c.result %}<p class="mt-1.5 text-[12.5px] leading-relaxed text-[var(--ink-2)]" data-part>结果：{{ c.result }}</p>{% endif %}
+    {% if c.ability %}<p class="mt-1 text-[12.5px] leading-relaxed text-[var(--ink-2)]" data-part>证明：{{ c.ability }}</p>{% endif %}
+    {% if c.todo %}<p class="mt-1 text-[11.5px] leading-relaxed text-amber-700/75">还可补充：{{ c.todo }}</p>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+{% if pages > 1 %}
+<div class="mt-4 flex items-center justify-between">
+  <span class="text-[11.5px] text-[var(--ink-4)]">共 {{ total }} 张 · 第 {{ page }} / {{ pages }} 页</span>
+  <div class="flex gap-2">
+    {% if page > 1 %}
+    <a href="/cards?kind={{ kind }}&sort={{ sort }}&tag={{ tag|urlencode }}&page={{ page - 1 }}" class="btn btn-ghost text-xs">上一页</a>
+    {% endif %}
+    {% if page < pages %}
+    <a href="/cards?kind={{ kind }}&sort={{ sort }}&tag={{ tag|urlencode }}&page={{ page + 1 }}" class="btn btn-ghost text-xs">下一页</a>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% else %}
+<div class="mt-6 rounded-2xl border border-dashed border-[rgba(26,29,25,.11)] bg-white/60 px-6 py-16 text-center reveal">
+  <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl"
+       style="background:linear-gradient(145deg,rgba(13,148,136,.13),rgba(13,148,136,.045))">
+    <span class="text-lg">✦</span>
+  </div>
+  <p class="mt-4 text-sm text-[var(--ink-2)]">
+    {% if kind %}这个分类下还没有要点卡。{% else %}还没有要点卡。{% endif %}
+    打开一条记录，点「提炼要点卡」即可生成。
+  </p>
+  <a href="/" class="btn btn-primary mt-4">去选一条记录</a>
+</div>
+{% endif %}
+
+<script>
+document.querySelectorAll('.js-copy').forEach(btn => {
+  btn.addEventListener('click', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const card = btn.closest('[data-card]');
+    const text = [...card.querySelectorAll('[data-part]')]
+      .map(el => el.textContent.replace(/\s+/g, ' ').trim())
+      .join('；');
+    const done = () => {
+      const old = btn.textContent;
+      btn.textContent = '已复制';
+      btn.classList.add('text-[var(--brand-deep)]');
+      setTimeout(() => { btn.textContent = old; btn.classList.remove('text-[var(--brand-deep)]'); }, 1400);
+    };
+    try {
+      await navigator.clipboard.writeText(text);
+      done();
+    } catch {
+      // 剪贴板不可用时退回到手动选中
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); done(); } catch { btn.textContent = '复制失败'; }
+      ta.remove();
+    }
+  });
+});
+</script>
+
+{% endblock %}

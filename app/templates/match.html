@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}岗位匹配 · 成长档案{% endblock %}
+{% block content %}
+
+<div class="reveal" data-anim="left">
+  <div class="eyebrow">岗位匹配</div>
+  <h1 class="page-title mt-1.5">这份 JD，我够格吗</h1>
+  <p class="mt-1 text-[13px] text-[var(--ink-3)]">粘贴岗位描述，系统拆成要求、逐条找证据、指出缺口，再改写成能放进简历的句子。</p>
+</div>
+
+{% if samples %}
+<div class="mt-4 flex flex-wrap gap-2 reveal" data-anim="down" style="--d:.04s">
+  {% for s in samples %}
+  <button type="button" data-jd="{{ s.text }}"
+          class="js-sample chip rounded-full border border-[rgba(26,29,25,.08)] bg-white px-3 py-1 text-xs text-[var(--ink-2)]">
+    {{ s.name }}
+  </button>
+  {% endfor %}
+</div>
+{% endif %}
+
+<form method="post" action="/match" class="card mt-4 p-3 reveal" data-anim="up" style="--d:.06s">
+  <textarea id="jd" name="jd" rows="7" required placeholder="粘贴岗位职责与任职要求…"
+            class="field w-full resize-y leading-relaxed">{{ jd }}</textarea>
+  <div class="mt-2 flex items-center gap-3">
+    <button class="btn btn-primary">生成匹配报告</button>
+    <span class="text-xs text-[var(--ink-4)]">只依据档案中的记录，不会编造经历</span>
+  </div>
+</form>
+
+{% if result and result.error %}
+<div class="mt-5 rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700 fade-up">{{ result.error }}</div>
+{% endif %}
+
+{% if result and not result.error %}
+{% set d = result.dims %}
+
+{% if result.unrelated %}
+<div class="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 fade-up">
+  <b>你的档案与这个岗位关联很弱。</b>
+  这段 JD 的 {{ result.requirements|length }} 条要求里只匹配上 {{ result.coverage }}%，
+  不适合硬凑简历条目。建议换一个方向，或先补充相关经历。
+</div>
+{% endif %}
+
+<section class="card mt-5 p-6 reveal" data-anim="up">
+  <div class="flex flex-wrap items-center gap-6">
+    <div class="shrink-0">{{ result.ring_svg|safe }}</div>
+    <div class="min-w-[180px] flex-1 space-y-3">
+      {% for label, value in [('技能匹配', d.skill), ('经历相关', d.experience), ('成果证明', d.achievement)] %}
+      <div class="flex items-center gap-3">
+        <span class="w-16 shrink-0 text-xs text-[var(--ink-3)]">{{ label }}</span>
+        <div class="bar flex-1">
+          <i style="width: {{ value }}%;background:linear-gradient(90deg,var(--brand),#5EEAD4)"></i>
+        </div>
+        <span class="w-8 text-right text-xs tnum text-[var(--ink-3)]">{{ value }}</span>
+      </div>
+      {% endfor %}
+      <p class="text-[11px] text-[var(--ink-4)]">
+        总分 = 技能 40% + 经历 40% + 成果 20%，可用三个分维度手算复现。
+      </p>
+    </div>
+  </div>
+  {% if result.degraded %}
+  <p class="mt-4 text-xs text-amber-700">模型不可用，当前为纯规则匹配结果（证据与缺口有效，条目为原文摘录）。</p>
+  {% endif %}
+</section>
+
+{% if result.bullets %}
+<section class="mt-4 reveal">
+  <div class="flex items-center justify-between">
+    <div>
+      <h2 class="section-title">可写入简历的条目</h2>
+      <p class="mt-0.5 text-xs muted">每条都能点回原始记录；出现原文没有的数字或奖项会被自动丢弃。</p>
+    </div>
+    <button type="button" id="copy-all" class="btn btn-ghost text-xs">复制全部</button>
+  </div>
+  <ul class="mt-3 space-y-2" id="bullet-list">
+    {% for b in result.bullets %}
+    <li class="card card-hover group p-4">
+      <p class="js-bullet text-[15px] leading-relaxed">{{ b.text }}</p>
+      <a href="/doc/{{ b.doc_id }}?cid={{ b.chunk_id }}"
+         class="mt-2 inline-flex items-center gap-1 text-xs text-[var(--brand-deep)] hover:underline">
+        来源：《{{ b.title }}》<span class="arrow inline-block opacity-0 transition-opacity group-hover:opacity-100">→</span>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+<section class="mt-4 reveal">
+  <h2 class="section-title">命中的证据 <span class="ml-1 text-xs font-normal text-[var(--ink-4)]">{{ result.evidence|length }} 条</span></h2>
+  {% if result.evidence %}
+  <ul class="mt-3 space-y-2">
+    {% for e in result.evidence %}
+    <li class="card card-hover p-4">
+      <div class="text-[11px] text-[var(--ink-3)]">对应要求：{{ e.requirement }}</div>
+      <p class="mt-1.5 text-sm leading-relaxed text-[var(--ink-2)]">{{ e.text[:160] }}{% if e.text|length > 160 %}…{% endif %}</p>
+      <a href="/doc/{{ e.doc_id }}?cid={{ e.chunk_id }}" class="mt-1.5 inline-block text-xs text-[var(--brand-deep)] hover:underline">《{{ e.title }}》</a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <div class="mt-3 rounded-2xl border border-dashed border-[rgba(26,29,25,.11)] bg-white/60 px-6 py-12 text-center text-sm text-[var(--ink-3)]">
+    未找到任何相关记录。这通常意味着档案里还没有对应经历，建议先补充。
+  </div>
+  {% endif %}
+</section>
+
+{% if result.gaps %}
+<section class="mt-4 reveal">
+  <h2 class="section-title">能力缺口 <span class="ml-1 text-xs font-normal text-[var(--ink-4)]">{{ result.gaps|length }} 项</span></h2>
+  <ul class="mt-3 space-y-1.5">
+    {% for g in result.gaps %}
+    <li class="rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2 text-sm text-amber-900">
+      {{ g.requirement }}<span class="ml-2 text-[11px] text-amber-700">暂无相关记录</span>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+{% endif %}
+
+<script>
+  document.querySelectorAll('.js-sample').forEach(btn => {
+    btn.addEventListener('click', () => { document.getElementById('jd').value = btn.dataset.jd; });
+  });
+
+  const copyBtn = document.getElementById('copy-all');
+  if (copyBtn) {
+    copyBtn.addEventListener('click', async () => {
+      const text = Array.from(document.querySelectorAll('.js-bullet'))
+        .map(el => '· ' + el.textContent.trim()).join('\n');
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch (e) {
+        const ta = document.createElement('textarea');
+        ta.value = text; document.body.appendChild(ta); ta.select();
+        document.execCommand('copy'); ta.remove();
+      }
+      copyBtn.textContent = '已复制 ' + text.split('\n').length + ' 条';
+      copyBtn.classList.add('text-[var(--brand-deep)]');
+      setTimeout(() => { copyBtn.textContent = '复制全部'; copyBtn.classList.remove('text-[var(--brand-deep)]'); }, 2200);
+    });
+  }
+</script>
+
+{% endblock %}

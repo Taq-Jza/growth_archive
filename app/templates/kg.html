@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}知识图谱 · {{ center }} · 成长档案{% endblock %}
+{% block content %}
+{% set KC = KCOLORS %}
+{% set color = KC.get(kind, '#0D9488') %}
+
+<a href="{% if tag %}/c/{{ kind }}?sort=tag&tag={{ tag|urlencode }}{% else %}/c/{{ kind }}{% endif %}"
+   class="group inline-flex items-center gap-1 text-xs text-[var(--ink-3)] transition-colors duration-200 hover:text-[var(--brand-deep)]">
+  <span class="arrow inline-block rotate-180 transition-transform duration-200 group-hover:-translate-x-1">→</span>
+  返回{% if tag %}「{{ tag }}」{% else %}{{ center }}{% endif %}
+</a>
+
+<div class="mt-3 flex flex-wrap items-end justify-between gap-3 reveal" data-anim="left">
+  <div class="min-w-0">
+    <div class="eyebrow">知识图谱</div>
+    <h1 class="page-title mt-1.5">{{ center }}</h1>
+    <p class="mt-1 text-[13px] text-[var(--ink-3)]">
+      {% if chapters %}{{ chapters }} 个章节 · {{ rows|length }} 条记录{% else %}还没有生成结构{% endif %}
+    </p>
+  </div>
+  {% if rows %}
+  <form method="post" action="/kg/build">
+    <input type="hidden" name="kind" value="{{ kind }}">
+    <input type="hidden" name="tag" value="{{ tag }}">
+    <input type="hidden" name="force" value="1">
+    <button class="btn btn-ghost text-xs">重新生成</button>
+  </form>
+  {% endif %}
+</div>
+
+{% if built %}
+<div class="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-sm text-emerald-800 fade-up">
+  已生成：{{ built.ok }} 条记录完成分章{% if built.failed %}，{{ built.failed }} 条未能识别（可稍后重试）{% endif %}。
+</div>
+{% endif %}
+{% if build_error %}
+<div class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-sm text-amber-900 fade-up">{{ build_error }}</div>
+{% endif %}
+
+{% if not rows %}
+<div class="card mt-5 p-6 reveal">
+  <h2 class="section-title">把这一标签下的记录按章节组织起来</h2>
+  <p class="mt-2 max-w-[620px] text-[12.5px] leading-relaxed text-[var(--ink-3)]">
+    系统会读一遍每条记录的正文，判断它属于哪一章、抽出关键概念，
+    然后画成一张可点击的图：中间是这个标签，内圈是章节，外圈是记录，点记录直接打开。
+    只对{% if tag %}「{{ tag }}」这一个标签{% else %}「{{ center }}」这个分类{% endif %}生效，不影响其他内容。
+  </p>
+  <form method="post" action="/kg/build" class="mt-4">
+    <input type="hidden" name="kind" value="{{ kind }}">
+    <input type="hidden" name="tag" value="{{ tag }}">
+    <button class="btn btn-primary">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+           class="h-4 w-4"><path d="M12 5v14M5 12h14"/></svg>
+      生成知识图谱
+    </button>
+    <span class="ml-3 text-[11.5px] text-[var(--ink-4)]">每条约 2–5 秒，结果会存下来，下次直接打开</span>
+  </form>
+</div>
+
+{% else %}
+<section class="card relative mt-4 overflow-hidden p-3 reveal" data-anim="up">
+  <div class="flex flex-wrap items-center justify-between gap-2 px-1.5 pb-2">
+    <div class="flex items-center gap-3 text-[11px] text-[var(--ink-4)]">
+      <span class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-full" style="background:{{ color }}"></span>{% if tag %}标签{% else %}分类{% endif %}</span>
+      <span class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-[var(--ink-3)]"></span>章节</span>
+      <span class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-full border border-[var(--brand)] bg-white"></span>记录（可点）</span>
+    </div>
+    <span class="text-[11px] text-[var(--ink-4)]">悬停看概念，点击打开记录</span>
+  </div>
+
+  <div class="overflow-x-auto">
+    <svg viewBox="0 0 {{ graph.width }} {{ graph.height }}" class="kg h-full w-full" style="min-width:600px"
+         role="img" aria-label="{{ center }} 的知识图谱">
+      <defs>
+        <radialGradient id="kgGlow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="{{ color }}" stop-opacity=".16"/>
+          <stop offset="100%" stop-color="{{ color }}" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
+      <circle cx="{{ graph.width // 2 }}" cy="{{ graph.height // 2 }}" r="250" fill="url(#kgGlow)"/>
+
+      {% for e in graph.edges %}
+      <line x1="{{ e.x1 }}" y1="{{ e.y1 }}" x2="{{ e.x2 }}" y2="{{ e.y2 }}"
+            class="kg-edge kg-edge-{{ e.kind }}" />
+      {% endfor %}
+
+      {% for n in graph.nodes %}
+        {% if n.type == 'center' %}
+        <circle cx="{{ n.x }}" cy="{{ n.y }}" r="46" fill="{{ color }}" opacity=".12"/>
+        <circle cx="{{ n.x }}" cy="{{ n.y }}" r="30" fill="{{ color }}"/>
+        <text x="{{ n.x }}" y="{{ n.y + 4 }}" text-anchor="middle" class="kg-center">{{ center }}</text>
+
+        {% elif n.type == 'chapter' %}
+        <g class="kg-node kg-chapter">
+          <circle cx="{{ n.x }}" cy="{{ n.y }}" r="8" fill="#fff" stroke="{{ color }}" stroke-width="2.5"/>
+          <text x="{{ n.lx }}" y="{{ n.ly }}" text-anchor="{{ n.anchor }}" class="kg-label kg-label-chapter">{{ n.label }}</text>
+          <text x="{{ n.lx }}" y="{{ n.ly + 13 }}" text-anchor="{{ n.anchor }}" class="kg-count">{{ n.count }} 条</text>
+        </g>
+
+        {% else %}
+        <a href="/doc/{{ n.doc_id }}" class="kg-node kg-doc">
+          <title>{{ n.full }}{% if n.concepts %} · {{ n.concepts|join('、') }}{% endif %}</title>
+          <circle cx="{{ n.x }}" cy="{{ n.y }}" r="5.5" fill="#fff" stroke="{{ color }}" stroke-width="2"/>
+          <text x="{{ n.lx }}" y="{{ n.ly }}" text-anchor="{{ n.anchor }}" class="kg-label">{{ n.label }}</text>
+        </a>
+        {% endif %}
+      {% endfor %}
+    </svg>
+  </div>
+</section>
+
+{% if concepts %}
+<section class="mt-4 reveal" data-anim="up">
+  <h2 class="section-title">关键概念</h2>
+  <div class="mt-2 flex flex-wrap gap-1.5">
+    {% for c in concepts %}
+    <span class="chip rounded-full bg-white px-2.5 py-1 text-[11.5px] text-[var(--ink-2)] shadow-[inset_0_0_0_1px_rgba(26,29,25,.08)]">{{ c }}</span>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<style>
+  .kg-edge{stroke:rgba(26,29,25,.12);stroke-width:1.2}
+  .kg-edge-spine{stroke:{{ color }};stroke-opacity:.3;stroke-width:2}
+  .kg-node{cursor:default}
+  .kg-doc{cursor:pointer}
+  .kg-doc:hover circle{fill:{{ color }};stroke:{{ color }};r:7px}
+  .kg-doc:hover .kg-label{fill:var(--brand-deep);font-weight:600}
+  .kg-label{font-size:10.5px;fill:var(--ink-2);transition:fill .18s}
+  .kg-label-chapter{font-size:11.5px;font-weight:600;fill:var(--ink-1)}
+  .kg-count{font-size:9.5px;fill:var(--ink-4)}
+  .kg-center{font-size:11px;fill:#fff;font-weight:600}
+  .kg-node:hover .kg-label{fill:var(--brand-deep)}
+</style>
+
+{% endif %}
+{% endblock %}

@@ -1,0 +1,222 @@
+{# 分类页的列表主体。
+   单独拆一份是为了切换排序、翻页、点标签时后端只渲染这一块，
+   页头和课程助手卡片不用跟着重画。整页渲染时由 category.html include 进来。 #}
+{% set KC = KCOLORS %}
+{% set color = KC.get(kind, '#999') %}
+{% set TITLES = {'award': '获奖时间线', 'project': '项目档案', 'trait': '特长'} %}
+{% set default_title = TITLES.get(kind, '全部' ~ kind_label ~ '记录') %}
+{# 按标签归类时标题点明视图；进了某个标签就用标签名当标题，比「全部课程记录」准确 #}
+{% set list_title = '按标签归类' if folders else (active_tag or default_title) %}
+
+{# 列表头：标题在左，搜索框与排序在右。
+   排序以前只存在于记录列表分支里，按标签归类时整块头都没了，
+   于是没法从标签视图切回时间排序 —— 现在头是独立的，任何视图都在。 #}
+<div class="flex flex-wrap items-end justify-between gap-3">
+  <div class="min-w-0">
+    <h2 class="section-title">{{ list_title }}</h2>
+    <p class="mt-0.5 text-[11.5px] text-[var(--ink-4)]">
+      {%- if q %}搜索「{{ q }}」· {{ total }} 条
+      {%- elif folders %}{{ folders|length }} 个标签 · {{ total }} 条记录
+      {%- elif active_tag %}{{ kind_label }} · {{ total }} 条
+      {%- elif sort == 'time_asc' %}{{ total }} 条 · 最早在前
+      {%- else %}{{ total }} 条 · 最新在前{% endif -%}
+    </p>
+  </div>
+  <div class="flex items-center gap-2">
+    <form method="get" action="/c/{{ kind }}" data-body-form class="relative">
+      <input type="hidden" name="sort" value="{{ sort }}">
+      {% if active_tag %}<input type="hidden" name="tag" value="{{ active_tag }}">{% endif %}
+      <input name="q" value="{{ q or '' }}" placeholder="搜索{{ kind_label }}记录"
+             aria-label="搜索{{ kind_label }}记录"
+             class="peer w-[168px] rounded-full bg-white py-1.5 pl-3 pr-8 text-[12px] text-[var(--ink-1)] shadow-[inset_0_0_0_1px_rgba(26,29,25,.09)] outline-none transition-all duration-300 placeholder:text-[var(--ink-4)] focus:w-[224px] focus:shadow-[inset_0_0_0_1px_var(--brand-edge),0_0_0_3px_rgba(13,148,136,.08)]">
+      <button type="submit" aria-label="搜索"
+              class="absolute right-1.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-[var(--ink-4)] transition-all duration-200 hover:bg-[var(--brand-tint)] hover:text-[var(--brand-deep)] active:scale-90">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="h-3.5 w-3.5">
+          <circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 4.5 4.5"/>
+        </svg>
+      </button>
+    </form>
+    {# data-body：页面脚本接管后只替换 #cat-body，无脚本时仍是普通链接 #}
+    <div class="flex items-center gap-0.5 rounded-full bg-[rgba(26,29,25,.045)] p-0.5 text-[12px]">
+      {% for value, label in [('time', '最新'), ('time_asc', '最早'), ('tag', '按标签')] %}
+      <a href="/c/{{ kind }}?sort={{ value }}{% if active_tag %}&tag={{ active_tag|urlencode }}{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}"
+         data-body
+         class="rounded-full px-2.5 py-1 transition-all duration-200
+                {% if sort == value %}bg-white text-[var(--ink-1)] shadow-[0_1px_2px_rgba(26,29,25,.09)]{% else %}text-[var(--ink-3)] hover:text-[var(--ink-1)]{% endif %}">{{ label }}</a>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+{% if tags and not folders %}
+<div class="mt-4 flex flex-wrap gap-1.5 fade-up" style="--d:.06s">
+  {% for t in tags %}
+  <a href="/c/{{ kind }}?sort={{ sort }}&tag={{ t.name|urlencode }}"
+     data-body
+     class="chip rounded-full px-3 py-1 text-xs
+            {% if active_tag == t.name %}text-white shadow-sm{% else %}border border-[rgba(26,29,25,.08)] bg-white text-[var(--ink-2)]{% endif %}"
+     {% if active_tag == t.name %}style="background:{{ color }}"{% endif %}>
+    {{ t.name }} <span class="{% if active_tag == t.name %}text-white/70{% else %}text-[var(--ink-4)]{% endif %}">{{ t.n }}</span>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if active_tag %}
+<div class="mt-3 flex items-center gap-2 rounded-xl bg-[rgba(26,29,25,.035)] px-3 py-2 text-[12px] text-[var(--ink-2)] fade-up">
+  <a href="/c/{{ kind }}?sort=tag" data-body class="flex items-center gap-1 text-[var(--ink-3)] transition-colors hover:text-[var(--brand-deep)]">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="h-3 w-3"><path d="M15 18l-6-6 6-6"/></svg>
+    所有标签
+  </a>
+  <span class="text-[var(--ink-4)]">/</span>
+  <b class="text-[var(--ink-1)]">{{ active_tag }}</b>
+  <div class="ml-auto flex items-center gap-2.5">
+    <a href="/kg?kind={{ kind }}&tag={{ active_tag|urlencode }}"
+       class="inline-flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1 text-[11.5px] text-[var(--ink-2)] shadow-[inset_0_0_0_1px_rgba(26,29,25,.08)] transition-all duration-200 hover:text-[var(--brand-deep)] hover:shadow-[inset_0_0_0_1px_var(--brand-edge)] active:scale-95">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" class="h-3 w-3">
+        <circle cx="12" cy="5" r="2.2"/><circle cx="5.5" cy="17" r="2.2"/><circle cx="18.5" cy="17" r="2.2"/>
+        <path d="M10.3 6.7 7 15M13.7 6.7 17 15M7.7 17h8.6"/>
+      </svg>
+      知识图谱
+    </a>
+    <a href="/c/{{ kind }}" data-body class="text-[var(--brand)] hover:underline">看全部记录</a>
+  </div>
+</div>
+{% endif %}
+
+{% if folders %}
+<section class="mt-4">
+  <p class="mb-3 text-[11.5px] text-[var(--ink-4)]">每条记录归入它的主标签，点开看这一类记录</p>
+  <div class="grid gap-2.5 sm:grid-cols-2">
+    {% for f in folders %}
+    <a href="/c/{{ kind }}?sort=tag&tag={{ f.name|urlencode }}"
+       data-body
+       class="card card-hover group rec-in flex flex-col p-4"
+       data-anim="{{ 'right' if loop.index0 is odd else 'left' }}"
+       style="--d:{{ (loop.index0 % 4) * 0.05 }}s">
+      <div class="flex items-center gap-2.5">
+        <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] transition-transform duration-200 group-hover:scale-105"
+              style="background:{{ color }}14;color:{{ color }}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" class="h-4 w-4">
+            <path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4l1.8 2H19.5A1.5 1.5 0 0 1 21 9.5v7A1.5 1.5 0 0 1 19.5 18h-15A1.5 1.5 0 0 1 3 16.5z"/>
+          </svg>
+        </span>
+        <span class="min-w-0 flex-1 truncate text-[13.5px] font-medium text-[var(--ink-1)] transition-colors group-hover:text-[var(--brand-deep)]">{{ f.name }}</span>
+        <span class="tnum shrink-0 text-[11.5px] text-[var(--ink-4)]">{{ f.n }} 条</span>
+        <span class="arrow shrink-0 text-[11px] text-[var(--brand)] opacity-0 transition-opacity group-hover:opacity-100">→</span>
+      </div>
+      {% if f.docs %}
+      <p class="mt-2 line-clamp-2 text-[11.5px] leading-relaxed text-[var(--ink-4)]">
+        {% for d in f.docs %}{{ d.title }}{% if not loop.last %} · {% endif %}{% endfor %}
+      </p>
+      {% endif %}
+    </a>
+    {% endfor %}
+  </div>
+</section>
+
+{% elif total == 0 %}
+<div class="mt-6 rounded-2xl border border-dashed border-[rgba(26,29,25,.11)] bg-white/60 px-6 py-16 text-center">
+  <div class="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl"
+       style="background:{{ color }}18">
+    <span class="h-2.5 w-2.5 rounded-full" style="background:{{ color }}"></span>
+  </div>
+  <p class="mt-4 text-sm text-[var(--ink-2)]">
+    {% if q %}没有找到包含「{{ q }}」的记录。{% elif active_tag %}这个标签下还没有记录。{% else %}这个分类还没有记录。{% endif %}
+  </p>
+  <div class="mt-4 flex justify-center gap-2">
+    {% if q %}<a href="/c/{{ kind }}" data-body class="btn btn-ghost">清空搜索</a>{% endif %}
+    <a href="/new?kind={{ kind }}" class="btn btn-primary">添加一条</a>
+  </div>
+</div>
+{% else %}
+
+{% if kind == 'award' %}
+<section class="mt-4">
+  <ol class="border-l border-[rgba(26,29,25,.08)] pl-5">
+    {% for it in items %}
+    <li class="group rec-in relative pb-6" data-anim="up" style="--d:{{ (loop.index0 % 8) * 0.04 }}s">
+      <a href="/doc/{{ it.document_id }}"
+         class="absolute -left-[31px] top-0.5 flex h-5 w-5 items-center justify-center rounded-full transition-transform duration-200 hover:scale-125"
+         aria-label="{{ it.title }}">
+        <span class="h-2.5 w-2.5 rounded-full ring-4 ring-[var(--paper)]" style="background:{{ color }}"></span>
+      </a>
+      <div class="text-[11px] tracking-wide text-[var(--ink-4)]">{{ it.period or it.created_at[:10] }}</div>
+      <a href="/doc/{{ it.document_id }}" class="mt-1 block">
+        <span class="rec-title text-[15px] font-medium">{{ it.title }}<span class="arrow ml-1 inline-block text-[var(--brand)] opacity-0 group-hover:opacity-100">→</span></span>
+        <p class="mt-1 text-sm leading-relaxed text-[var(--ink-2)]">{{ it.snippet }}</p>
+      </a>
+    </li>
+    {% endfor %}
+  </ol>
+</section>
+
+{% elif kind == 'project' %}
+<section class="mt-4">
+  <div class="grid gap-3 md:grid-cols-2">
+    {% for it in items %}
+    <a href="/doc/{{ it.document_id }}"
+       class="card card-hover rec-in block p-4"
+       data-anim="{{ 'right' if loop.index0 is odd else 'left' }}"
+       style="--d:{{ (loop.index0 % 4) * 0.05 }}s">
+      <div class="flex items-center justify-between text-[11px] text-[var(--ink-4)]">
+        <span>{{ it.period or it.created_at[:10] }}</span>
+        <span class="rounded-full bg-[rgba(26,29,25,.04)] px-2 py-0.5">{{ it.n_cards }} 张要点卡</span>
+      </div>
+      <h3 class="rec-title mt-2 text-[15px] font-medium leading-snug">{{ it.title }}</h3>
+      <p class="mt-2 text-sm leading-relaxed text-[var(--ink-2)]">{{ it.snippet }}</p>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+
+{% elif kind == 'trait' %}
+<section class="mt-4">
+  <div class="grid gap-3 md:grid-cols-2">
+    {% for it in items %}
+    <a href="/doc/{{ it.document_id }}"
+       class="card card-hover rec-in block p-4"
+       data-anim="{{ 'right' if loop.index0 is odd else 'left' }}"
+       style="--d:{{ (loop.index0 % 4) * 0.05 }}s">
+      <h3 class="rec-title text-[15px] font-medium leading-snug">{{ it.title }}</h3>
+      <p class="mt-2 text-sm leading-relaxed text-[var(--ink-2)]">{{ it.snippet }}</p>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+
+{% else %}
+<section class="mt-4">
+  <ul class="space-y-2">
+    {% for it in items %}
+    <li class="card card-hover rec-in" data-anim="{{ 'right' if loop.index0 is odd else 'left' }}" style="--d:{{ (loop.index0 % 8) * 0.045 }}s">
+      <a href="/doc/{{ it.document_id }}" class="group flex min-w-0 items-start gap-3 px-4 py-3">
+        <span class="mt-1.5 h-2 w-2 shrink-0 rounded-full transition-transform duration-200 group-hover:scale-125"
+              style="background:{{ color }}"></span>
+        <span class="min-w-0 flex-1">
+          <span class="rec-title block truncate text-[13.5px]">{{ it.title }}</span>
+          <span class="mt-0.5 block truncate text-[11.5px] text-[var(--ink-4)]">{{ it.snippet }}</span>
+        </span>
+        <span class="shrink-0 text-[11px] text-[var(--ink-4)]">{{ it.period or it.created_at[:10] }}</span>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+{% if pages > 1 %}
+<div class="mt-4 flex items-center justify-between">
+  <span class="text-xs text-[var(--ink-4)]">第 {{ page }} / {{ pages }} 页</span>
+  <div class="flex gap-2">
+    {% if page > 1 %}
+    <a href="/c/{{ kind }}?page={{ page - 1 }}&sort={{ sort }}{% if active_tag %}&tag={{ active_tag|urlencode }}{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}" data-body class="btn btn-ghost text-xs">上一页</a>
+    {% endif %}
+    {% if page < pages %}
+    <a href="/c/{{ kind }}?page={{ page + 1 }}&sort={{ sort }}{% if active_tag %}&tag={{ active_tag|urlencode }}{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}" data-body class="btn btn-ghost text-xs">下一页</a>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% endif %}

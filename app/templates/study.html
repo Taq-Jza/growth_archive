@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}课程助手 · 成长档案{% endblock %}
+{% block content %}
+
+<div class="mx-auto max-w-3xl">
+  <a href="/c/course" class="group inline-flex items-center gap-1 text-xs text-[var(--ink-3)] transition-colors hover:text-[var(--brand-deep)]">
+    <span class="arrow inline-block rotate-180 group-hover:-translate-x-1">→</span> 返回课程
+  </a>
+  <div class="eyebrow mt-3">课程助手</div>
+  <h1 class="page-title mt-1.5">哪里没弄懂</h1>
+  <p class="mt-1 text-[13px] text-[var(--ink-3)]">
+    写下来。它会先定位知识点，再分步解释，最后告诉你资料里缺什么。
+  </p>
+
+  <form method="post" action="/course/question" class="mt-5">
+    <textarea name="q" rows="3" required
+              placeholder="例如：为什么 L1 正则化能产生稀疏解，而 L2 不能？"
+              class="field w-full leading-relaxed">{{ q }}</textarea>
+    <div class="mt-2 flex items-center gap-3">
+      <button class="btn btn-primary"
+              onclick="this.textContent='分析中，约 10 秒…';this.classList.add('opacity-60');this.form.submit();">分析这个问题</button>
+      <span class="text-xs text-[var(--ink-4)]">只依据你上传的课程资料</span>
+    </div>
+  </form>
+
+  {% if error %}
+  <div class="mt-5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{{ error }}</div>
+  {% endif %}
+
+  {% if result %}
+  <section class="card mt-6 p-6 reveal">
+    <div class="flex items-center gap-2">
+      {% if result.topic %}
+      <span class="rounded bg-[rgba(26,29,25,.05)] px-2 py-0.5 text-xs text-[var(--ink-2)]">{{ result.topic }}</span>
+      {% endif %}
+      <span class="text-xs text-[var(--ink-4)]">命中 {{ result.chunks }} 个资料片段</span>
+    </div>
+    <p class="mt-3 text-[15px] font-medium leading-relaxed">{{ result.core }}</p>
+
+    {% if result.explain %}
+    <ol class="mt-4 space-y-2">
+      {% for s in result.explain %}
+      <li class="flex gap-2 text-sm leading-relaxed text-[var(--ink-2)]">
+        <span class="shrink-0 text-[var(--ink-4)]">{{ loop.index }}.</span>
+        <span>{{ s.step }}<a href="#cite-{{ s.ref }}" class="ml-1 text-xs text-blue-700">[{{ s.ref }}]</a></span>
+      </li>
+      {% endfor %}
+    </ol>
+    {% endif %}
+
+    {% if result.dropped %}
+    <p class="mt-3 text-xs text-[var(--ink-4)]">
+      另有 {{ result.dropped }} 句因为没有资料依据被丢弃 —— 它们不是从你的资料里来的。
+    </p>
+    {% endif %}
+
+    {% if result.missing %}
+    <div class="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+      资料里没覆盖：{{ result.missing }}
+      <a href="/new?kind=course" class="ml-1 underline">补充资料</a>
+    </div>
+    {% endif %}
+
+    {% if result.citations %}
+    <div class="mt-5 border-t border-[rgba(26,29,25,.05)] pt-3">
+      <div class="text-xs text-[var(--ink-3)]">依据</div>
+      <ul class="mt-1.5 space-y-1">
+        {% for c in result.citations %}
+        <li id="cite-{{ c.n }}">
+          <a href="/doc/{{ c.doc_id }}?cid={{ c.chunk_id }}" class="text-xs text-blue-700 hover:underline">
+            [{{ c.n }}] 《{{ c.title }}》
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </section>
+  {% endif %}
+</div>
+
+{% endblock %}

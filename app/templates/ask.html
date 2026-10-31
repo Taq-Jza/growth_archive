@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}提问 · 成长档案{% endblock %}
+{% block content %}
+
+<div class="reveal" data-anim="left">
+  <div class="eyebrow">提问</div>
+  <h1 class="page-title mt-1.5">{% if scope %}问{{ scope_label }}资料{% else %}问你的档案{% endif %}</h1>
+  <p class="mt-1 text-[13px] text-[var(--ink-3)]">回答只依据你的记录，每句都标出处。</p>
+</div>
+
+<form action="/ask" method="get" class="card mt-4 flex flex-wrap items-center gap-2 p-2 reveal" data-anim="down" style="--d:.04s">
+  {% if scope %}<input type="hidden" name="scope" value="{{ scope }}">{% endif %}
+  <input name="q" value="{{ q }}" autofocus
+         placeholder="{% if scope %}在这门{{ scope_label }}资料里问…{% else %}例如：我做过哪些和数据分析相关的事？{% endif %}"
+         class="min-w-[200px] flex-1 rounded-xl border-0 bg-transparent px-3 py-2 text-sm outline-none placeholder:text-[var(--ink-4)]">
+  <button class="btn btn-primary">提问</button>
+</form>
+
+<div class="mt-3 flex flex-wrap items-center gap-2 text-xs">
+  {% if scope %}
+  <span class="inline-flex items-center gap-1.5 rounded-full bg-[var(--brand-tint)] px-2.5 py-1 text-[var(--brand-deep)]">
+    <span class="h-1.5 w-1.5 rounded-full bg-[var(--brand)]"></span>
+    范围：{{ scope_label }}
+    <a href="/ask" class="ml-1 underline underline-offset-2 hover:text-[var(--ink-1)]">改为全档案</a>
+  </span>
+  {% endif %}
+  <span class="rounded-full bg-[rgba(26,29,25,.04)] px-2.5 py-1 text-[var(--ink-3)]">
+    {% if embed_ready %}混合检索 · 关键词 + 语义{% else %}关键词检索{% endif %}
+  </span>
+  {% if not llm_ready %}
+  <span class="rounded-full bg-amber-50 px-2.5 py-1 text-amber-700">模型未配置 · 降级为检索结果</span>
+  {% endif %}
+</div>
+
+{% if not q %}
+<div class="mt-6 rounded-2xl border border-dashed border-[rgba(26,29,25,.11)] bg-white/60 px-6 py-16 text-center reveal">
+  <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl"
+       style="background:linear-gradient(145deg,rgba(13,148,136,.13),rgba(13,148,136,.045))">
+    <span class="text-lg">?</span>
+  </div>
+  <p class="mt-4 text-sm text-[var(--ink-2)]">输入一个问题开始。回答只依据你的档案，并标注出处。</p>
+  <div class="mt-4 flex flex-wrap justify-center gap-2 text-xs">
+    {% for s in ['我做过哪些数据分析相关的事？', '我拿过哪些奖？', '我解决过什么技术难题？'] %}
+    <a href="/ask?q={{ s|urlencode }}{% if scope %}&scope={{ scope }}{% endif %}"
+       class="chip rounded-full border border-[rgba(26,29,25,.08)] bg-white px-3 py-1.5 text-[var(--ink-2)]">{{ s }}</a>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<div class="mt-5 {% if not q %}hidden{% endif %}" id="panel">
+  <div class="card p-5 reveal" data-anim="up">
+    <div id="answer" class="whitespace-pre-wrap text-[15px] leading-[1.9]"></div>
+    <div class="mt-3 text-xs text-[var(--ink-4)]" id="status">正在检索…</div>
+  </div>
+  <div id="citations" class="mt-3 space-y-2"></div>
+</div>
+
+<script>
+const Q = {{ q|tojson }};
+const SCOPE = {{ scope|tojson }};
+const answerEl = document.getElementById('answer');
+const statusEl = document.getElementById('status');
+const citEl = document.getElementById('citations');
+let buf = '';
+
+function esc(s) {
+  return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function render(text) {
+  const safe = esc(text).replace(/\[(\d{1,2})\]/g,
+    '<sup class="mx-0.5 rounded bg-[rgba(13,148,136,.1)] px-1 text-[10px] text-[var(--brand-deep)]">$1</sup>');
+  answerEl.innerHTML = safe.replace(/\n/g, '<br>');
+}
+
+function renderCitations(list) {
+  if (!list || !list.length) { citEl.innerHTML = ''; return; }
+  citEl.innerHTML =
+    '<div class="mb-1 text-[11px] tracking-wider text-[var(--ink-4)]">出处</div>' +
+    list.map(c => `
+    <a href="/doc/${c.doc_id}?cid=${c.chunk_id}"
+       class="card card-hover block p-3">
+      <div class="flex items-center gap-2 text-[11px] text-[var(--ink-3)]">
+        <span class="rounded bg-[rgba(13,148,136,.1)] px-1.5 py-0.5 text-[var(--brand-deep)]">${c.n}</span>
+        <span class="truncate">《${esc(c.title)}》</span>
+        <span class="arrow ml-auto text-[var(--brand)] opacity-0 transition-opacity group-hover:opacity-100">→</span>
+      </div>
+      <div class="mt-1.5 text-sm leading-relaxed text-[var(--ink-2)]">${esc((c.text || '').slice(0, 140))}…</div>
+    </a>`).join('');
+}
+
+if (Q) {
+  const url = '/api/ask?q=' + encodeURIComponent(Q) + (SCOPE ? '&scope=' + encodeURIComponent(SCOPE) : '');
+  const es = new EventSource(url);
+
+  es.addEventListener('token', e => {
+    buf += JSON.parse(e.data).text;
+    answerEl.classList.add('caret');
+    render(buf);
+    statusEl.textContent = '正在生成…';
+  });
+
+  es.addEventListener('replace', e => {
+    buf = JSON.parse(e.data).text;
+    render(buf);
+  });
+
+  es.addEventListener('done', e => {
+    const d = JSON.parse(e.data);
+    if (d.answer) { buf = d.answer; render(buf); }
+    answerEl.classList.remove('caret');
+    renderCitations(d.citations);
+    const modeLabel = d.mode === 'hybrid' ? '混合检索' : '关键词检索';
+    statusEl.textContent = d.degraded
+      ? '已降级为检索结果（模型不可用）'
+      : `${modeLabel} · 点击出处可核对原文`;
+    es.close();
+  });
+
+  es.addEventListener('fail', e => {
+    answerEl.classList.remove('caret');
+    statusEl.textContent = '出错了：' + JSON.parse(e.data).message;
+    es.close();
+  });
+
+  es.addEventListener('close', () => { answerEl.classList.remove('caret'); es.close(); });
+}
+</script>
+
+{% endblock %}

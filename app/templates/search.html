@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}检索 · 成长档案{% endblock %}
+{% block content %}
+{% from "_ui.html" import picker %}
+{% set KC = KCOLORS %}
+{% set kind_opts = [('', '全部类型')] + (kinds.items()|list) %}
+
+<div class="reveal" data-anim="left">
+  <div class="eyebrow">检索</div>
+  <h1 class="page-title mt-1.5">{% if q %}「{{ q }}」{% else %}查你的档案{% endif %}</h1>
+  <p class="mt-1 text-[13px] text-[var(--ink-3)]">
+    {% if q or kind or frm or to or tag %}共 {{ total }} 条结果{% else %}输入关键词，或直接按类型与时间筛选{% endif %}
+  </p>
+  {% if tag %}
+  <div class="mt-2 inline-flex items-center gap-2 rounded-full bg-[rgba(26,29,25,.045)] px-3 py-1 text-xs text-[var(--ink-2)]">
+    标签：<b class="text-[var(--ink-1)]">{{ tag }}</b>
+    <a href="/search" class="text-[var(--brand)] hover:underline">清除</a>
+  </div>
+  {% endif %}
+</div>
+
+<form method="get" action="/search" class="card mt-4 p-2 reveal" data-anim="down" style="--d:.04s">
+  <div class="flex flex-wrap items-center gap-2">
+    <div class="relative min-w-[180px] flex-1">
+      <input name="q" value="{{ q }}" placeholder="搜索你的成长记录…"
+             class="field field-icon w-full py-2 text-[13px]">
+      <span class="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--ink-4)]">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="h-3.5 w-3.5"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 4.5 4.5"/></svg>
+      </span>
+    </div>
+    {{ picker('kind', kind_opts, kind, uid='search-kind', align='left', menu_class='w-[132px]') }}
+    <input type="date" name="frm" value="{{ frm }}" title="起始日期"
+           class="field field-sm w-[128px]">
+    <span class="text-[11px] text-[var(--ink-4)]">至</span>
+    <input type="date" name="to" value="{{ to }}" title="结束日期"
+           class="field field-sm w-[128px]">
+    <button class="btn btn-primary px-3 py-2 text-[12.5px]">搜索</button>
+    {% if q or kind or frm or to %}
+    <a href="/search" class="px-1 text-[12px] text-[var(--ink-3)] transition-colors hover:text-[var(--brand-deep)]">清空</a>
+    {% endif %}
+  </div>
+</form>
+
+{% if not q and not kind and not frm and not to %}
+<div class="mt-6 rounded-2xl border border-dashed border-[rgba(26,29,25,.11)] bg-white/60 px-6 py-16 text-center reveal">
+  <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl"
+       style="background:linear-gradient(145deg,rgba(13,148,136,.13),rgba(13,148,136,.045))">
+    <span class="text-lg">⌕</span>
+  </div>
+  <p class="mt-4 text-sm text-[var(--ink-2)]">输入关键词，或选择类型与时间范围。只筛选不搜索也可以。</p>
+</div>
+{% endif %}
+
+{% if hits %}
+<ul class="mt-5 space-y-2.5">
+  {% for h in hits %}
+  <li class="card card-hover fade-up" style="--d:{{ loop.index0 * 0.03 }}s">
+    <a href="/doc/{{ h.document_id }}" class="block p-4">
+      <div class="flex min-w-0 items-center gap-2">
+        <span class="shrink-0 rounded-md px-1.5 py-0.5 text-[11px]"
+              style="background:{{ KC.get(h.kind, '#999') }}1A;color:{{ KC.get(h.kind, '#999') }}">{{ kinds.get(h.kind, h.kind) }}</span>
+        <span class="rec-title min-w-0 flex-1 truncate text-[13.5px] font-medium">{{ h.title }}</span>
+        <span class="shrink-0 text-[11px] text-[var(--ink-4)]">{{ h.period or h.created_at[:10] }}</span>
+      </div>
+      <p class="mt-1.5 text-[12.5px] leading-relaxed text-[var(--ink-3)]">{{ h.snippet|safe }}</p>
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+{% elif q or kind or frm or to %}
+<div class="mt-6 rounded-2xl border border-dashed border-[rgba(26,29,25,.11)] bg-white/60 px-6 py-16 text-center reveal">
+  <p class="text-sm text-[var(--ink-2)]">没有找到相关内容。换个说法，或者放宽类型与时间范围。</p>
+</div>
+{% endif %}
+
+{% if pages > 1 %}
+{% set base = '/search?q=' ~ (q|urlencode) ~ '&kind=' ~ kind ~ '&frm=' ~ frm ~ '&to=' ~ to %}
+<div class="mt-4 flex items-center justify-between">
+  <span class="text-xs text-[var(--ink-4)]">共 {{ total }} 处 · 第 {{ page }} / {{ pages }} 页</span>
+  <div class="flex gap-2">
+    {% if page > 1 %}
+    <a href="{{ base }}&page={{ page - 1 }}" class="btn btn-ghost text-xs">上一页</a>
+    {% endif %}
+    {% if page < pages %}
+    <a href="{{ base }}&page={{ page + 1 }}" class="btn btn-ghost text-xs">下一页</a>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
