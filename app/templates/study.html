@@ -17,8 +17,10 @@
               placeholder="例如：为什么 L1 正则化能产生稀疏解，而 L2 不能？"
               class="field w-full leading-relaxed">{{ q }}</textarea>
     <div class="mt-2 flex items-center gap-3">
+      {# 同 new.html：脚本提交会绕过 required，空着点按钮会一路 422 掉进错误页。
+         先 reportValidity() 让浏览器提示「请填写此字段」，通过后走默认提交。 #}
       <button class="btn btn-primary"
-              onclick="this.textContent='分析中，约 10 秒…';this.classList.add('opacity-60');this.form.submit();">分析这个问题</button>
+              onclick="if(!this.form.reportValidity())return false;this.textContent='分析中，约 10 秒…';this.classList.add('opacity-60');">分析这个问题</button>
       <span class="text-xs text-[var(--ink-4)]">只依据你上传的课程资料</span>
     </div>
   </form>

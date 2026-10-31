@@ -697,7 +697,7 @@ def new_page(request: Request, kind: str = "", err: str = ""):
 @app.post("/upload")
 async def upload_file(
     request: Request,
-    file: UploadFile = File(...),
+    file: UploadFile | None = File(None),
     kind: str = Form("course"),
     title: str = Form(""),
     period: str = Form(""),
@@ -715,6 +715,14 @@ async def upload_file(
         return RedirectResponse("/login", status_code=303)
     if kind not in ingest.KINDS:
         kind = "course"
+
+    # 没选文件就点「上传并解析」：前端 reportValidity() 会拦一道，这里再兜一层。
+    # 表单字段声明成必填的话，空提交会先被 FastAPI 判成 422、掉进通用错误页，
+    # 用户看不到「到底哪一步没做」。
+    if file is None or not (file.filename or "").strip():
+        return RedirectResponse(
+            f"/new?kind={kind}&err={quote('请先选择要上传的文件')}", status_code=303
+        )
 
     data = await file.read()
     try:
@@ -1029,11 +1037,20 @@ def question_page(request: Request):
 
 
 @app.post("/course/question", response_class=HTMLResponse)
-def question_analyze(request: Request, q: str = Form(...)):
+def question_analyze(request: Request, q: str = Form("")):
     """课程助手：问题分析。只看课程分类的资料。"""
     user = auth.current_user(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
+
+    # 字段声明成必填时，空提交会先被判成 422、掉进通用错误页；
+    # 改成可选再自己判空，用户能看懂「还没写问题」这句话。
+    if not q.strip():
+        return TEMPLATES.TemplateResponse(
+            request,
+            "study.html",
+            {"user": user, "q": "", "result": None, "error": "先写一句你卡在哪里"},
+        )
 
     res = study.analyze(user["id"], q)
     return TEMPLATES.TemplateResponse(

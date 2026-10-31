@@ -59,8 +59,11 @@
       </div>
 
       <div class="flex items-center gap-3">
+        {# 原来直接调 this.form.submit()，这是脚本提交，会绕过 required 校验，
+           没选文件就点会一路 422 掉进错误页。先 reportValidity() 让浏览器把
+           「请选择文件」的气泡打出来，通过了再交回默认提交行为。 #}
         <button class="btn btn-primary"
-                onclick="this.textContent='解析中，请稍候…';this.classList.add('opacity-60');this.form.submit();">
+                onclick="if(!this.form.reportValidity())return false;this.textContent='解析中，请稍候…';this.classList.add('opacity-60');">
           上传并解析
         </button>
         {% if not vision_ready %}
