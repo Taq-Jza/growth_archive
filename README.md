@@ -94,6 +94,16 @@ cp .env.example .env          # 填 LLM_API_KEY
 
 打开 http://127.0.0.1:8000 ，点「直接体验，不用注册」。
 
+依赖版本：`requirements.txt` 是范围声明，`requirements.lock` 是精确锁定。
+需要和演示环境完全一致时（例如复现验收结果），把上面前两行换成：
+
+```bash
+.venv/Scripts/python.exe -m pip install -r requirements.lock
+```
+
+没有 `.env` 也能启动：问答会降级为「返回检索片段」，其余功能照常。
+首次启动自动建库并创建体验账号，首页可一键载入 26 条示例档案。
+
 ## 七、页面一览
 
 | 路径 | 说明 |
