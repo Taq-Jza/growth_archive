@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{# 页头的「N 条记录 · M 张要点卡」是聚合数：删除后软刷新让它当场对上。 #}
+{% block body_attrs %}data-refresh-on-delete="1"{% endblock %}
 {% block title %}{{ kind_label }} · 成长档案{% endblock %}
 {% block content %}
 {% set KC = KCOLORS %}

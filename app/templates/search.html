@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{# 结果计数是聚合数：删除后软刷新让「共 N 条结果」当场对上。 #}
+{% block body_attrs %}data-refresh-on-delete="1"{% endblock %}
 {% block title %}检索 · 成长档案{% endblock %}
 {% block content %}
 {% from "_ui.html" import picker %}

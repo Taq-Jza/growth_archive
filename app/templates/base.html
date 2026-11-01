@@ -525,7 +525,7 @@
     }
   </style>
 </head>
-<body>
+<body{% block body_attrs %}{% endblock %}>
 
 <div id="routebar"></div>
 
@@ -1121,6 +1121,39 @@
     }, stay);
   };
 
+  /* ---------- 删除后的整页同步 ----------
+     概览 / 分类 / 检索这些页的统计数字、图表、要点卡是服务端渲染的，
+     AJAX 删除只摘掉卡片的话，数字要等手动刷新才对得上。
+     这些页在 <body> 上带 data-refresh-on-delete：删除成功后软刷新一次，
+     提示语与滚动位置经 sessionStorage 带过去，看起来只是数字自己变了。 */
+  const consumeDelFlash = () => {
+    try {
+      const f = sessionStorage.getItem('del-flash');
+      if (f) { window.__flash = JSON.parse(f); sessionStorage.removeItem('del-flash'); }
+      const sy = sessionStorage.getItem('del-scroll');
+      if (sy !== null) {
+        sessionStorage.removeItem('del-scroll');
+        const y = Math.max(0, parseInt(sy, 10) || 0);
+        window.addEventListener('load', () => window.scrollTo(0, y), { once: true });
+      }
+    } catch (err) {}
+  };
+  consumeDelFlash();
+
+  /* 后退键有时恢复的是删除前的页面快照（bfcache），数字同样是旧的。
+     检测到快照恢复就重载一次，代价小，换来任何入口进来都是新数据。 */
+  window.addEventListener('pageshow', (e) => { if (e.persisted) location.reload(); });
+
+  const softRefresh = (msg) => {
+    if (!document.body.hasAttribute('data-refresh-on-delete')) return false;
+    try {
+      sessionStorage.setItem('del-flash', JSON.stringify(msg));
+      sessionStorage.setItem('del-scroll', String(scrollY));
+    } catch (err) {}
+    setTimeout(() => location.reload(), 230);   // 等卡片淡出动画走完再走
+    return true;
+  };
+
   // 服务端渲染时把要提示的话放进 window.__flash，这里统一弹
   if (window.__flash) {
     const f = window.__flash;
@@ -1261,7 +1294,9 @@
       });
       if (!r.ok) throw new Error(r.status);
       dropCard(card);
-      window.toast('已删除「' + (title.length > 16 ? title.slice(0, 16) + '…' : title) + '」');
+      const text = '已删除「' + (title.length > 16 ? title.slice(0, 16) + '…' : title) + '」';
+      // 概览这类带聚合数据的页：软刷新让数字和图表当场对上；其余页只弹提示
+      if (!softRefresh({ text, type: 'ok' })) window.toast(text);
     } catch (err) {
       window.toast('删除失败，网络或服务异常', { type: 'error' });
     }
@@ -1286,7 +1321,8 @@
       if (!r.ok) throw new Error(r.status);
       cards.forEach(dropCard);
       exitSelect();
-      window.toast('已删除 ' + cards.length + ' 条记录');
+      const text = '已删除 ' + cards.length + ' 条记录';
+      if (!softRefresh({ text, type: 'ok' })) window.toast(text);
     } catch (err) {
       window.toast('删除失败，网络或服务异常', { type: 'error' });
     }
