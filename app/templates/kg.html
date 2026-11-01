@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}知识图谱 · {{ center }} · 成长档案{% endblock %}
+{% block title %}{{ graph_label }} · {{ center }} · 成长档案{% endblock %}
 {% block content %}
 {% set KC = KCOLORS %}
 {% set color = KC.get(kind, '#0D9488') %}
@@ -12,7 +12,7 @@
 
 <div class="mt-3 flex flex-wrap items-end justify-between gap-3 reveal" data-anim="left">
   <div class="min-w-0">
-    <div class="eyebrow">知识图谱</div>
+    <div class="eyebrow">{{ graph_label }}</div>
     <h1 class="page-title mt-1.5">{{ center }}</h1>
     <p class="mt-1 text-[13px] text-[var(--ink-3)]">
       {% if chapters %}{{ chapters }} 个章节 · {{ rows|length }} 条记录{% else %}还没有生成结构{% endif %}
@@ -31,7 +31,7 @@
 {# 先选范围再生成：默认「全部」会把所有课程混在一张图上，章节名互相撞，谁也不是谁的先修 #}
 {% if folders %}
 <div class="mt-4 flex flex-wrap items-center gap-1.5 fade-up" style="--d:.05s">
-  <span class="mr-1 text-[11.5px] text-[var(--ink-4)]">按课程看</span>
+  <span class="mr-1 text-[11.5px] text-[var(--ink-4)]">按标签看</span>
   <a href="/kg?kind={{ kind }}"
      class="chip rounded-full px-2.5 py-1 text-[11.5px]
             {% if not tag %}text-white shadow-sm{% else %}border border-[rgba(26,29,25,.08)] bg-white text-[var(--ink-2)]{% endif %}"
@@ -49,20 +49,55 @@
 
 {% if built %}
 <div class="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-sm text-emerald-800 fade-up">
-  已生成：{{ built.ok }} 条记录完成分章{% if built.failed %}，{{ built.failed }} 条未能识别（可稍后重试）{% endif %}。
+  {% if built.ok %}已生成：{{ built.ok }} 条记录完成分章{% if built.failed %}，{{ built.failed }} 条未能识别（可稍后重试）{% endif %}。
+  {% elif built.failed %}{{ built.failed }} 条记录未能识别，可稍后重试。
+  {% else %}{% endif %}
+  {% if built.skipped %}
+  <span class="block mt-1 text-[12.5px] text-emerald-700">
+    另有 {{ built.skipped }} 条之前已经分过章，没有重复调用模型；图已按最新数据重画。
+    想整体重做就点右上角「重新生成」。
+  </span>
+  {% endif %}
 </div>
 {% endif %}
 {% if build_error %}
 <div class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-sm text-amber-900 fade-up">{{ build_error }}</div>
 {% endif %}
 
+{% if rows and scope_total > rows|length %}
+{# 只生成过一部分时，图上会静默缺几条 —— 看起来像「标签筛选没生效」，其实是还没分章 #}
+<div class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200/70 bg-amber-50/70 px-3.5 py-2.5 text-[12.5px] text-amber-900 fade-up">
+  <span>这个标签下还有 {{ scope_total - rows|length }} 条记录没分过章，图里暂时看不到它们。</span>
+  <form method="post" action="/kg/build">
+    <input type="hidden" name="kind" value="{{ kind }}">
+    <input type="hidden" name="tag" value="{{ tag }}">
+    <button class="btn btn-ghost text-xs">补齐剩余</button>
+  </form>
+</div>
+{% endif %}
+
 {% if not rows %}
+{% if scope_total == 0 and tag %}
+{# 「标签下没有记录」和「记录还没分章」是两码事。提示混在一起，用户会反复点生成却什么也不变 #}
+<div class="card mt-5 p-6 reveal">
+  <h2 class="section-title">「{{ tag }}」下还没有记录</h2>
+  <p class="mt-2 max-w-[620px] text-[12.5px] leading-relaxed text-[var(--ink-3)]">
+    {{ graph_label }}按标签取范围，这个标签目前一条记录都没挂上，所以没有可组织的内容。
+    先回到{{ center }}列表，把要归到这里的资料标上「{{ tag }}」，再回来生成。
+  </p>
+  <div class="mt-4 flex flex-wrap items-center gap-2">
+    <a href="/c/{{ kind }}" class="btn btn-primary">回{{ center }}列表</a>
+    <a href="/c/{{ kind }}?sort=tag" class="btn btn-ghost">按标签整理</a>
+  </div>
+</div>
+{% else %}
 <div class="card mt-5 p-6 reveal">
   <h2 class="section-title">把这一标签下的记录按章节组织起来</h2>
   <p class="mt-2 max-w-[620px] text-[12.5px] leading-relaxed text-[var(--ink-3)]">
     系统会读一遍每条记录的正文，判断它属于哪一章、抽出关键概念，
     然后画成一张可点击的图：中间是这个标签，内圈是章节，外圈是记录，点记录直接打开。
     只对{% if tag %}「{{ tag }}」这一个标签{% else %}「{{ center }}」这个分类{% endif %}生效，不影响其他内容。
+    {% if scope_total %}这个范围里有 {{ scope_total }} 条记录待分章。{% endif %}
   </p>
   <form method="post" action="/kg/build" class="mt-4">
     <input type="hidden" name="kind" value="{{ kind }}">
@@ -70,11 +105,12 @@
     <button class="btn btn-primary">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
            class="h-4 w-4"><path d="M12 5v14M5 12h14"/></svg>
-      生成知识图谱
+      生成{{ graph_label }}
     </button>
     <span class="ml-3 text-[11.5px] text-[var(--ink-4)]">每条约 2–5 秒，结果会存下来，下次直接打开</span>
   </form>
 </div>
+{% endif %}
 
 {% else %}
 <section class="card relative mt-4 overflow-hidden p-3 reveal" data-anim="up">
@@ -89,7 +125,7 @@
 
   <div class="overflow-x-auto">
     <svg viewBox="0 0 {{ graph.width }} {{ graph.height }}" class="kg h-full w-full" style="min-width:600px"
-         role="img" aria-label="{{ center }} 的知识图谱">
+         role="img" aria-label="{{ center }} 的{{ graph_label }}">
       <defs>
         <radialGradient id="kgGlow" cx="50%" cy="50%" r="50%">
           <stop offset="0%" stop-color="{{ color }}" stop-opacity=".16"/>
@@ -105,8 +141,8 @@
 
       {% for n in graph.nodes %}
         {% if n.type == 'center' %}
-        <circle cx="{{ n.x }}" cy="{{ n.y }}" r="46" fill="{{ color }}" opacity=".12"/>
-        <circle cx="{{ n.x }}" cy="{{ n.y }}" r="30" fill="{{ color }}"/>
+        <circle cx="{{ n.x }}" cy="{{ n.y }}" r="50" fill="{{ color }}" opacity=".12"/>
+        <circle cx="{{ n.x }}" cy="{{ n.y }}" r="36" fill="{{ color }}"/>
         <text x="{{ n.x }}" y="{{ n.y + 4 }}" text-anchor="middle" class="kg-center">{{ center }}</text>
 
         {% elif n.type == 'chapter' %}
@@ -149,9 +185,11 @@
   .kg-label{font-size:10.5px;fill:var(--ink-2);transition:fill .18s}
   .kg-label-chapter{font-size:11.5px;font-weight:600;fill:var(--ink-1)}
   .kg-count{font-size:9.5px;fill:var(--ink-4)}
-  .kg-center{font-size:11px;fill:#fff;font-weight:600}
+  .kg-center{font-size:10.5px;fill:#fff;font-weight:600}
   .kg-node:hover .kg-label{fill:var(--brand-deep)}
 </style>
 
 {% endif %}
 {% endblock %}
+
+{% block footer_note %}{{ graph_label }}只摆章节，不改动正文。{% if rows %}{{ chapters }} 章 · {{ rows|length }} 条记录。{% endif %}{% endblock %}

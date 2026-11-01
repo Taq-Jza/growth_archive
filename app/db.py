@@ -105,6 +105,16 @@ CREATE TABLE IF NOT EXISTS doc_map (
     data        TEXT NOT NULL DEFAULT '{}',
     created_at  TEXT NOT NULL
 );
+
+-- 面试预演的上一次结果。body_hash 用来判断记录改过没有：
+-- 正文一改，题目就不再对应，缓存自动作废。
+CREATE TABLE IF NOT EXISTS interview_cache (
+    document_id INTEGER PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+    user_id     INTEGER NOT NULL,
+    body_hash   TEXT NOT NULL,
+    data        TEXT NOT NULL DEFAULT '{}',
+    created_at  TEXT NOT NULL
+);
 """
 
 

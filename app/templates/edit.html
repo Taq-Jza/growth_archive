@@ -37,7 +37,11 @@
   </form>
 
   <form method="post" action="/doc/{{ doc.id }}/delete" class="mt-10 border-t border-[rgba(26,29,25,.08)] pt-5"
-        onsubmit="return confirm('删除后不可恢复，连同要点卡一起移除。确定删除？');">
+        data-confirm-submit
+        data-confirm-title="删除这条记录？"
+        data-confirm-desc="正文、切片、要点卡和图片会一起删除，无法恢复。"
+        data-confirm-ok="删除"
+        data-confirm-danger="1">
     <button class="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm text-red-600 hover:bg-red-50">
       删除这条记录
     </button>
@@ -45,3 +49,5 @@
 </div>
 
 {% endblock %}
+
+{% block footer_note %}保存后会重建索引并清掉旧要点卡 —— 正文改了，之前的提炼就不作数了。{% endblock %}

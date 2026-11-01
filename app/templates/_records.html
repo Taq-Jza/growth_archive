@@ -32,13 +32,15 @@
 {% elif docs %}
 <ul class="space-y-2">
   {% for d in docs %}
-  <li class="card card-hover rec-in"
+  <li class="card card-hover rec-in rec-card"
+      data-doc-id="{{ d.document_id }}" data-doc-title="{{ d.title }}"
+      data-doc-edit="/doc/{{ d.document_id }}/edit"
       data-anim="{{ 'right' if loop.index0 is odd else 'left' }}"
       style="--d:{{ (loop.index0 % 8) * 0.045 }}s">
     <div class="flex min-w-0 items-center gap-2.5 px-4 py-3">
       <a href="/c/{{ d.kind }}"
-         class="shrink-0 rounded-md px-1.5 py-0.5 text-[11px] transition hover:brightness-95"
-         style="background:{{ KC.get(d.kind, '#999') }}1A;color:{{ KC.get(d.kind, '#666') }}">{{ d.kind_label }}</a>
+         class="rec-kind shrink-0 rounded-md px-1.5 py-0.5 text-[11px] transition hover:brightness-95"
+         style="background:{{ KC.get(d.kind, '#999') }}1A;color:{{ KC.get(d.kind, '#666') }}">{{ kinds.get(d.kind, d.kind) }}</a>
       <a href="/doc/{{ d.document_id }}" class="rec-title min-w-0 flex-1 truncate text-sm">{{ d.title }}</a>
       <span class="hidden shrink-0 text-[11px] text-[var(--ink-4)] sm:block">{{ d.n_chunks }} 片 · {{ d.n_cards }} 卡</span>
       <span class="w-16 shrink-0 text-right text-[11px] text-[var(--ink-4)]">{{ d.period or d.created_at[:10] }}</span>

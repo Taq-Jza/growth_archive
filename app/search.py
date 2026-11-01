@@ -97,16 +97,12 @@ def _filter_sql(kind, period_from, period_to, tag=None, q=None) -> tuple[str, li
         sql += " AND d.kind = ?"
         params.append(kind)
     if tag:
-        # 与「标签收藏夹」的分组口径保持一致：只认主标签（第一个非类型标签）。
-        # 若按任意标签匹配，会出现文件夹标 3 条、点进去 5 条的情况。
-        from .ingest import KINDS
-
-        labels = tuple(KINDS.values())
-        ph = ",".join("?" for _ in labels)
-        sql += f""" AND (SELECT t2.name FROM document_tags dt2 JOIN tags t2 ON t2.id = dt2.tag_id
-                          WHERE dt2.document_id = d.id AND t2.name NOT IN ({ph})
-                          ORDER BY dt2.tag_id LIMIT 1) = ?"""
-        params.extend(labels)
+        # 任意标签都算：一条记录挂了几个标签，点哪个都应该能找到它。
+        # 早先只认主标签（第一个），是为了让「文件夹上的数字」与「点进去的条数」严格相等；
+        # 代价是次标签在界面上等于不存在 —— 用户打了标签却看不到，比数字对不上更难解释。
+        # 现在计数也改成「挂了这个标签的记录数」，两边仍然一致，只是各标签之和会大于总数。
+        sql += """ AND EXISTS (SELECT 1 FROM document_tags dt2 JOIN tags t2 ON t2.id = dt2.tag_id
+                               WHERE dt2.document_id = d.id AND t2.name = ?)"""
         params.append(tag)
     if q:
         # 分类页的「搜索本类记录」：只匹配标题与正文，返回的是记录而不是切片，
@@ -287,10 +283,11 @@ def kind_folders(user_id: int) -> list[dict]:
 
 
 def tag_folders(user_id: int, kind: str | None = None) -> list[dict]:
-    """按主标签聚合成「收藏夹」：每个标签一组，带记录数与最近几条标题。
+    """按标签聚合成「收藏夹」：每个标签一组，带记录数与最近几条标题。
 
-    只用主标签（第一个非类型标签）分组，理由和能力域一致：
-    一条记录可能挂 3 个标签，全用就会出现同一条记录出现在多个文件夹里。
+    一条记录挂了几个标签，就出现在几个文件夹里 —— 和筛选口径一致：
+    点进去看到的就是真挂着这个标签的记录。代价是各文件夹条数之和会大于记录总数，
+    但「打了标签却找不到」比「数字加不齐」更让人困惑。
     """
     from .ingest import KINDS
 
@@ -301,11 +298,13 @@ def tag_folders(user_id: int, kind: str | None = None) -> list[dict]:
     if kind:
         params.append(kind)
 
+    # 一条记录的多标签在 SQL 里拼成一列（分隔符用 \x1f，标签名里不会出现），
+    # 再在 Python 里展开 —— 比 LEFT JOIN 之后去重好写，也不会漏掉「一个标签都没有」的记录。
     rows = db.rows(
         f"""SELECT d.id AS doc_id, d.title, d.period, d.created_at,
-                   (SELECT t2.name FROM document_tags dt2 JOIN tags t2 ON t2.id = dt2.tag_id
-                     WHERE dt2.document_id = d.id AND t2.name NOT IN ({ph})
-                     ORDER BY dt2.tag_id LIMIT 1) AS main_tag
+                   (SELECT GROUP_CONCAT(t2.name, char(31))
+                      FROM document_tags dt2 JOIN tags t2 ON t2.id = dt2.tag_id
+                     WHERE dt2.document_id = d.id AND t2.name NOT IN ({ph})) AS tag_list
             FROM documents d
             WHERE d.user_id = ?{extra}
             ORDER BY COALESCE(d.period, d.created_at) DESC""",
@@ -314,11 +313,12 @@ def tag_folders(user_id: int, kind: str | None = None) -> list[dict]:
 
     buckets: dict[str, dict] = {}
     for r in rows:
-        tag = r["main_tag"] or "未标注"
-        b = buckets.setdefault(tag, {"name": tag, "n": 0, "docs": []})
-        b["n"] += 1
-        if len(b["docs"]) < 3:
-            b["docs"].append({"id": r["doc_id"], "title": r["title"]})
+        names = [x for x in (r["tag_list"] or "").split("\x1f") if x]
+        for tag in names or ["未标注"]:
+            b = buckets.setdefault(tag, {"name": tag, "n": 0, "docs": []})
+            b["n"] += 1
+            if len(b["docs"]) < 3:
+                b["docs"].append({"id": r["doc_id"], "title": r["title"]})
 
     # 有标签的排在前面，未标注沉底
     return sorted(
@@ -408,7 +408,13 @@ def capability_buckets(
     buckets: dict[str, dict] = {}
     for d in docs:
         hit = first_tag.get(d["id"])
-        bucket = tag_to_bucket.get(hit["tag"], "其他") if hit else "其他"
+        bucket = tag_to_bucket.get(hit["tag"]) if hit else None
+        if not bucket:
+            # 没标签、或标签不在映射表里（如「大学物理」）时，拿标题再找一次：
+            # 「物理」这类标签没人往表里加，但标题里就写着，直接落进「其他」
+            # 等于把一条有明确领域的记录丢了，雷达图上看不出来它属于哪块。
+            title = d["title"] or ""
+            bucket = next((dom for lab, dom in tag_to_bucket.items() if lab and lab in title), "其他")
         b = buckets.setdefault(bucket, {"name": bucket, "n": 0, "tags": {}, "records": []})
         b["n"] += 1
         if hit:

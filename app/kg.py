@@ -25,8 +25,8 @@ EXTRACT_PROMPT = """你在帮学生整理一门课的知识结构。
 3. 只输出 JSON：{"chapter":"...","concepts":["...","..."]}"""
 
 
-def _docs_in_tag(user_id: int, kind: str | None, tag: str | None) -> list:
-    """取记录：给了 tag 就按主标签筛，没给就是该分类的全部。
+def docs_in_tag(user_id: int, kind: str | None, tag: str | None) -> list:
+    """取记录：给了 tag 就按标签筛（任意标签命中即可），没给就是该分类的全部。
 
     口径与分类页、标签收藏夹一致 —— 否则图上的条数和列表里的对不上。
     """
@@ -41,10 +41,9 @@ def _docs_in_tag(user_id: int, kind: str | None, tag: str | None) -> list:
 
     tag_sql = ""
     if tag:
-        tag_sql = f""" AND (SELECT t2.name FROM document_tags dt2 JOIN tags t2 ON t2.id = dt2.tag_id
-                            WHERE dt2.document_id = d.id AND t2.name NOT IN ({ph})
-                            ORDER BY dt2.tag_id LIMIT 1) = ?"""
-        params.extend(labels)
+        # 与分类页筛选同口径：任意标签命中即可，不再只看主标签
+        tag_sql = """ AND EXISTS (SELECT 1 FROM document_tags dt2 JOIN tags t2 ON t2.id = dt2.tag_id
+                                  WHERE dt2.document_id = d.id AND t2.name = ?)"""
         params.append(tag)
 
     return db.rows(
@@ -58,7 +57,7 @@ def _docs_in_tag(user_id: int, kind: str | None, tag: str | None) -> list:
 
 def build(user_id: int, kind: str | None, tag: str | None, force: bool = False) -> dict:
     """为标签下的每条记录抽取章节与概念。已抽过的不重复调用模型。"""
-    docs = _docs_in_tag(user_id, kind, tag)
+    docs = docs_in_tag(user_id, kind, tag)
     done = {r["document_id"] for r in db.rows("SELECT document_id FROM doc_kg")}
     targets = [d for d in docs if force or d["id"] not in done]
     ok, failed = 0, 0
@@ -84,11 +83,13 @@ def build(user_id: int, kind: str | None, tag: str | None, force: bool = False) 
                 (d["id"], chapter, json.dumps(concepts, ensure_ascii=False)),
             )
         ok += 1
-    return {"ok": ok, "failed": failed, "total": len(docs)}
+    # skipped 是「这条记录之前已经抽过、这次没重跑」的数量。
+    # 不返回它的话，页面上只会显示「已生成 0 条」，看起来像点了没反应。
+    return {"ok": ok, "failed": failed, "total": len(docs), "skipped": len(docs) - len(targets)}
 
 
 def load(user_id: int, kind: str | None, tag: str | None) -> list[dict]:
-    docs = _docs_in_tag(user_id, kind, tag)
+    docs = docs_in_tag(user_id, kind, tag)
     meta = {r["document_id"]: r for r in db.rows("SELECT * FROM doc_kg")}
     out = []
     for d in docs:
@@ -119,14 +120,21 @@ def _label(x: float, y: float, cx: float, cy: float, pad: float = 14.0) -> tuple
     return round(lx, 1), round(ly + 3.5, 1), anchor
 
 
-def layout(rows: list[dict], width: int = 860, height: int = 560) -> dict:
+def layout(rows: list[dict], width: int = 860, height: int | None = None) -> dict:
     """中心 = 标签；内圈 = 章节；外圈 = 记录。
 
     章节按记录数从多到少排，从 12 点方向顺时针铺开，
     同一章的记录聚在它周围的一小段角度里，便于「看出一章包含哪些笔记」。
+
+    画布高度随记录数收缩：只有一条记录时，固定 560 高会留出一大片空白，
+    图上就一条竖线，看着像没画出来。半径也按高度等比缩，圆才不会被压扁。
     """
+    n_docs = len(rows)
+    if height is None:
+        height = max(380, min(560, 300 + n_docs * 32))
     cx, cy = width / 2, height / 2
-    r1, r2 = 132, 236
+    r2 = min(height / 2 - 58, 236)
+    r1 = r2 * 0.56
 
     chapters: dict[str, list[dict]] = {}
     for r in rows:

@@ -9,7 +9,7 @@ import base64
 import io
 import re
 
-from . import config, llm
+from . import config, llm, prose
 
 MAX_IMAGE_EDGE = 1600
 MAX_ATTACH_BYTES = 15 * 1024 * 1024
@@ -38,32 +38,11 @@ def _normalize_ocr(text: str) -> str:
     即使提示词要求纯文本，模型仍常带上 **加粗**、- 列表、| 表格 |、$公式$。
     这些符号一旦入库，会污染中文分词（检索命中率下降）和列表摘要的可读性，
     所以在入口处统一清掉，而不是指望每个下游模块自己兼容。
+
+    实际规则都在 prose.strip_markup：文本导入与图片识别共用同一套清洗，
+    免得两条路径洗出来的正文风格不一样。
     """
-    t = text.replace("\r\n", "\n").replace("\r", "\n")
-
-    # 表格行：| 项目 | 数值 | → 「项目：数值」
-    def _row(m: "re.Match[str]") -> str:
-        cells = [c.strip() for c in m.group(1).split("|")]
-        cells = [c for c in cells if c and not set(c) <= set("-: ")]
-        if not cells:
-            return ""
-        if len(cells) == 2:
-            return f"{cells[0]}：{cells[1]}"
-        return "，".join(cells)
-
-    t = re.sub(r"^\s*\|(.+)\|\s*$", _row, t, flags=re.M)
-
-    t = re.sub(r"^\s*[-=*_]{3,}\s*$", "", t, flags=re.M)      # 分隔线
-    t = re.sub(r"^\s*#{1,6}\s*", "", t, flags=re.M)            # 标题井号
-    t = re.sub(r"^\s*[-*+]\s+", "", t, flags=re.M)             # 无序列表
-    t = re.sub(r"^\s*\d+[.、)]\s+", "", t, flags=re.M)        # 有序列表
-    t = re.sub(r"\*\*(.+?)\*\*", r"\1", t)                  # 加粗
-    t = re.sub(r"__(.+?)__", r"\1", t)                         # 加粗（下划线式）
-    t = t.replace("`", "")                                      # 行内代码
-    t = re.sub(r"\$\$(.+?)\$\$", r"\1", t, flags=re.S)      # 块级公式
-    t = re.sub(r"\$(.+?)\$", r"\1", t)                        # 行内公式
-    t = re.sub(r"\n{3,}", "\n\n", t)                          # 多余空行
-    return t.strip()
+    return prose.strip_markup(text)
 
 
 class ExtractError(Exception):
@@ -232,11 +211,14 @@ def image_to_text(data: bytes) -> tuple[str, str]:
     return _clean(_normalize_ocr(raw)), f"由 {config.VISION_MODEL} 识别"
 
 
-def extract(filename: str, data: bytes) -> tuple[str, str, list[dict]]:
-    """返回 (正文, 说明, 内嵌图片)。
+def extract(filename: str, data: bytes) -> tuple[str, str, list[dict], dict | None]:
+    """返回 (正文, 说明, 内嵌图片, 待后台处理的任务)。
 
     内嵌图片只在 docx 里有：每张带 data / ext / index，正文对应位置留 ⟦IMG:n⟧。
-    其他格式返回空列表。失败抛 ExtractError。
+    第四项是「还有后续处理」的凭据：文本类资料先入库本地清洗版，
+    原文放在这里交给后台改写成自然语言 —— 三千字的 Markdown 让模型转写要 30 秒，
+    卡在上传请求里等，用户会以为页面挂了。
+    其他格式返回 None。失败抛 ExtractError。
     """
     if not data:
         raise ExtractError("文件是空的。")
@@ -247,20 +229,26 @@ def extract(filename: str, data: bytes) -> tuple[str, str, list[dict]]:
     suffix = "." + name.rsplit(".", 1)[-1] if "." in name else ""
 
     if suffix in TEXT_EXT:
-        return _clean(_decode_text(data)), "已读取文本", []
+        # 纯文本 / Markdown 是排版稿：先本地去掉井号、短横线、$公式$，
+        # 这一版立即可读、立即可检索；模型转写版随后在后台替换。
+        raw = _clean(_decode_text(data))
+        cleaned = prose.strip_markup(raw)
+        if llm.available():
+            return cleaned, "已提取文字，正在后台整理成自然语言", [], {"raw": raw}
+        return cleaned, "已提取文字（未配置模型，保留原文写法）", [], None
 
     if suffix in DOCX_EXT:
         text, pics = _from_docx(data)
         note = "已解析 Word 文档" + (f"，含 {len(pics)} 张内嵌图片" if pics else "")
-        return _clean(text), note, pics
+        return _clean(text), note, pics, None
 
     if suffix in PDF_EXT:
-        return _clean(_from_pdf(data)), "已解析 PDF 文字层", []
+        return _clean(_from_pdf(data)), "已解析 PDF 文字层", [], None
 
     if suffix in IMAGE_EXT:
         if not llm.available():
             raise ExtractError("图片需要模型识别，但当前没有配置模型密钥。")
         text, note = image_to_text(data)
-        return text, note, []
+        return text, note, [], None
 
     raise ExtractError(f"暂不支持 {suffix or '这种'} 格式。支持 txt / md / docx / pdf / 图片。")

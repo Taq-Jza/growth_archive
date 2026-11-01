@@ -55,7 +55,7 @@
 <ul class="mt-5 space-y-2.5">
   {% for h in hits %}
   <li class="card card-hover fade-up" style="--d:{{ loop.index0 * 0.03 }}s">
-    <a href="/doc/{{ h.document_id }}" class="block p-4">
+    <a href="/doc/{{ h.document_id }}?from=search" class="block p-4">
       <div class="flex min-w-0 items-center gap-2">
         <span class="shrink-0 rounded-md px-1.5 py-0.5 text-[11px]"
               style="background:{{ KC.get(h.kind, '#999') }}1A;color:{{ KC.get(h.kind, '#999') }}">{{ kinds.get(h.kind, h.kind) }}</span>
@@ -89,3 +89,5 @@
 {% endif %}
 
 {% endblock %}
+
+{% block footer_note %}{% if q %}「{{ q }}」在 {{ total }} 条记录里命中 —— 搜的是全文，含文档里图片上的字。{% elif total %}{{ total }} 条记录符合当前筛选。{% else %}搜的是全文 —— 正文、切片，以及文档里图片上的字。{% endif %}{% endblock %}

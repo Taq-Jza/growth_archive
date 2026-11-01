@@ -3,7 +3,7 @@
 {% block content %}
 
 <div class="mx-auto max-w-3xl">
-  <a href="/doc/{{ doc.id }}" class="group inline-flex items-center gap-1 text-xs text-[var(--ink-3)] transition-colors hover:text-[var(--brand-deep)]">
+  <a href="/doc/{{ doc.id }}?from=interview" class="group inline-flex items-center gap-1 text-xs text-[var(--ink-3)] transition-colors hover:text-[var(--brand-deep)]">
     <span class="arrow inline-block rotate-180 group-hover:-translate-x-1">→</span> 返回详情
   </a>
   <div class="eyebrow mt-3">面试预演</div>
@@ -35,6 +35,26 @@
     </div>
     {% endfor %}
   </div>
+
+  <div class="mt-3 flex flex-wrap items-center justify-end gap-2">
+    {# 结果会存下来：记录没改过就直接看上次的，省掉二十秒等待 #}
+    {% if result.cached %}
+    <span class="text-[11.5px] text-[var(--ink-4)]">这是上次的结果，记录没改就一直有效</span>
+    {% endif %}
+    <form method="post" action="/doc/{{ doc.id }}/interview">
+      <input type="hidden" name="force" value="1">
+      <button class="btn btn-ghost text-xs"
+              onclick="this.textContent='正在重新出题…';this.classList.add('opacity-60');">换一批</button>
+    </form>
+  </div>
+
+  {% if result.web %}
+  <p class="mt-3 flex items-center gap-1.5 text-[11.5px] text-[var(--ink-4)]">
+    <span class="h-1.5 w-1.5 rounded-full bg-[var(--brand)]"></span>
+    出题时参考了 {{ result.web.count }} 条近期公开面试题（{{ result.web.provider }}）；
+    问题仍对准这条记录，不替你编经历。
+  </p>
+  {% endif %}
 
   {% if s.cannot > 0 %}
   <div class="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
@@ -85,3 +105,5 @@
 </div>
 
 {% endblock %}
+
+{% block footer_note %}题目按这条记录问；记录里没写的细节，会标成「答不上来」。{% endblock %}

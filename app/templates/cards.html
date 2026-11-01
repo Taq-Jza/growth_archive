@@ -30,14 +30,14 @@
   {% for value, label in kinds.items() %}
   <a href="/cards?kind={{ value }}"
      class="chip rounded-full px-3 py-1 text-xs {% if kind == value %}text-white shadow-sm{% else %}border border-[rgba(26,29,25,.08)] bg-white text-[var(--ink-2)]{% endif %}"
-     {% if kind == value %}style="background:{{ KC.get(value, '#999') }}"{% endif %}>
+     {% if kind == value %}style="background:{{ KC.get(value, '#9A9A9A') }}"{% endif %}>
     {{ label }} <span class="{% if kind == value %}text-white/70{% else %}text-[var(--ink-4)]{% endif %}">{{ card_counts.get(value, 0) }}</span>
   </a>
   {% endfor %}
 </div>
 
 <div class="mt-4 flex items-center justify-between gap-3 fade-up" style="--d:.12s">
-  <span class="text-[11.5px] text-[var(--ink-4)]">
+  <span class="text-[11.5px] text-[var(--ink-4)]" id="card-count">
     {% if folders %}{{ folders|length }} 个标签{% elif tag %}「{{ tag }}」{{ total }} 张{% else %}{{ total }} 张{% if sort == 'time_asc' %} · 最早在前{% else %} · 最新在前{% endif %}{% endif %}
   </span>
   <div class="flex items-center gap-0.5 rounded-full bg-[rgba(26,29,25,.045)] p-0.5 text-[12px]">
@@ -95,17 +95,27 @@
 <div class="mt-4 grid items-start gap-2.5 sm:grid-cols-2">
   {% for c in cards %}
   <div class="card card-hover group rec-in relative flex flex-col p-4"
-       data-card data-anim="{{ 'right' if loop.index0 is odd else 'left' }}"
+       data-card data-card-id="{{ c.id }}" data-href="/doc/{{ c.document_id }}?from=cards"
+       tabindex="0" role="link"
+       aria-label="打开来源记录：{{ c.doc_title }}"
+       data-anim="{{ 'right' if loop.index0 is odd else 'left' }}"
        style="--d:{{ (loop.index0 % 4) * 0.05 }}s">
     <div class="flex min-w-0 items-center gap-1.5 pr-12 text-[11px] text-[var(--ink-4)]">
       <span class="shrink-0 rounded-[4px] px-1.5 py-0.5"
-            style="background:{{ KC.get(c.kind, '#999') }}14;color:{{ KC.get(c.kind, '#666') }}">{{ kinds.get(c.kind, c.kind) }}</span>
+            style="background:{{ KC.get(c.kind, '#9A9A9A') }}14;color:{{ KC.get(c.kind, '#666') }}">{{ kinds.get(c.kind, c.kind) }}</span>
       <a href="/doc/{{ c.document_id }}"
          class="min-w-0 flex-1 truncate transition-colors duration-200 hover:text-[var(--brand-deep)]">{{ c.doc_title }}</a>
       <span class="shrink-0">{{ (c.period or '')[:10] }}</span>
     </div>
-    <button type="button" class="js-copy absolute right-2.5 top-2.5 rounded-md px-1.5 py-1 text-[10.5px] text-[var(--ink-4)] opacity-0 transition-all duration-200 hover:bg-[var(--brand-tint)] hover:text-[var(--brand-deep)] group-hover:opacity-100 focus-visible:opacity-100"
-            title="复制这一段，可直接粘到简历">复制</button>
+    <div class="absolute right-2 top-2 flex items-center gap-0.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100 focus-within:opacity-100">
+      <button type="button" class="js-copy rounded-md px-1.5 py-1 text-[10.5px] text-[var(--ink-4)] transition-colors duration-200 hover:bg-[var(--brand-tint)] hover:text-[var(--brand-deep)]"
+              title="复制这一段，可直接粘到简历">复制</button>
+      <button type="button" class="js-del-card rounded-md p-1 text-[var(--ink-4)] transition-colors duration-200 hover:bg-red-50 hover:text-red-600"
+              title="删除这张卡（不影响原记录）" aria-label="删除这张卡">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"
+             stroke-linejoin="round" class="h-3.5 w-3.5"><path d="M4 7h16M9.5 7V5h5v2M6.5 7l.8 12.1a1.5 1.5 0 0 0 1.5 1.4h6.4a1.5 1.5 0 0 0 1.5-1.4L17.5 7"/></svg>
+      </button>
+    </div>
     <p class="mt-2 text-[14px] font-medium leading-relaxed text-[var(--ink-1)]" data-part>{{ c.what }}</p>
     {% if c.result %}<p class="mt-1.5 text-[12.5px] leading-relaxed text-[var(--ink-2)]" data-part>结果：{{ c.result }}</p>{% endif %}
     {% if c.ability %}<p class="mt-1 text-[12.5px] leading-relaxed text-[var(--ink-2)]" data-part>证明：{{ c.ability }}</p>{% endif %}
@@ -173,4 +183,63 @@ document.querySelectorAll('.js-copy').forEach(btn => {
 });
 </script>
 
+<script>
+/* 要点卡整卡可点：卡片里任何位置（正文、留白）都能回到来源记录。
+   复制按钮自己 stopPropagation，点它只复制、不跳转。 */
+(() => {
+  document.querySelectorAll('[data-href]').forEach((card) => {
+    card.style.cursor = 'pointer';
+    const go = (e) => {
+      if (e.target.closest('button, a')) return;   // 复制按钮 / 原有链接照旧
+      location.href = card.dataset.href;
+    };
+    card.addEventListener('click', go);
+    card.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(e); }
+    });
+  });
+
+  /* 删单张卡：确认 → 删 → 原地淡出 → 顶上的计数减一。
+     不整页刷新，因为用户常常连着删好几张。 */
+  const countEl = document.getElementById('card-count');
+  document.querySelectorAll('.js-del-card').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();                     // 别触发整卡跳转
+      const card = btn.closest('[data-card]');
+      const id = card && card.dataset.cardId;
+      if (!id) return;
+      const ok = await window.confirmDialog({
+        title: '删除这张要点卡？',
+        desc: '只删这一张，来源记录和其他卡都不受影响。',
+        ok: '删除',
+        danger: true,
+      });
+      if (!ok) return;
+      btn.disabled = true;
+      try {
+        const r = await fetch('/card/' + id + '/delete', {
+          method: 'POST',
+          headers: { 'X-Requested-With': 'fetch' },
+        });
+        if (!r.ok) throw new Error(r.status);
+        card.animate(
+          [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(-6px)' }],
+          { duration: 170, easing: 'ease-in' },
+        ).onfinish = () => card.remove();
+        window.toast('已删除这张要点卡');
+        if (countEl) {
+          const m = countEl.textContent.match(/(\d+)\s*张/);
+          if (m) countEl.textContent = countEl.textContent.replace(/(\d+)(\s*张)/, (+m[1] - 1) + '$2');
+        }
+      } catch (err) {
+        btn.disabled = false;
+        window.toast('删除失败，网络或服务异常', { type: 'error' });
+      }
+    });
+  });
+})();
+</script>
+
 {% endblock %}
+
+{% block footer_note %}{% if card_total %}{{ card_total }} 张要点卡，每张都连着原文。点卡片任意位置，跳回去看上下文。{% else %}还没有要点卡。打开一条记录，点「提炼要点」就会生成。{% endif %}{% endblock %}

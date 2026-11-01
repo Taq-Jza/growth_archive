@@ -7,7 +7,11 @@
 """
 from __future__ import annotations
 
-from . import db, llm
+import datetime as dt
+import hashlib
+import json
+
+from . import config, db, llm, websearch
 from .match import entity_ok
 
 MAX_QUESTIONS = 6
@@ -73,22 +77,82 @@ def _normalize(raw: object, source: str) -> list[dict]:
     return out
 
 
-def prepare(user_id: int, document_id: int) -> dict:
+def _body_hash(body: str) -> str:
+    return hashlib.sha1((body or "").encode("utf-8")).hexdigest()[:16]
+
+
+def load_cached(user_id: int, doc) -> dict | None:
+    """取上一次的预演结果。记录改过（正文 hash 不符）就当没有。"""
+    row = db.one(
+        "SELECT body_hash, data FROM interview_cache WHERE document_id = ? AND user_id = ?",
+        (doc["id"], user_id),
+    )
+    if not row or row["body_hash"] != _body_hash(doc["body"]):
+        return None
+    try:
+        payload = json.loads(row["data"])
+    except Exception:  # noqa: BLE001 存坏了就当没有，不影响重新生成
+        return None
+    return payload or None
+
+
+def _save_cache(user_id: int, doc, payload: dict) -> None:
+    # doc 是 sqlite3.Row，不能直接 json 序列化 —— 存之前剔掉，读出来由调用方补回。
+    # 这一点没处理时缓存永远写不进去，而异常被下面的 try 吞了，表现是「缓存一直不命中」。
+    body = {k: v for k, v in payload.items() if k != "doc"}
+    db.execute(
+        """INSERT INTO interview_cache (document_id, user_id, body_hash, data, created_at)
+           VALUES (?,?,?,?,?)
+           ON CONFLICT(document_id) DO UPDATE SET
+             user_id=excluded.user_id, body_hash=excluded.body_hash,
+             data=excluded.data, created_at=excluded.created_at""",
+        (doc["id"], user_id, _body_hash(doc["body"]), json.dumps(body, ensure_ascii=False),
+         dt.datetime.now().isoformat(timespec="seconds")),
+    )
+
+
+def prepare(user_id: int, document_id: int, force: bool = False) -> dict:
+    """生成预演题目。
+
+    默认先看缓存：这条记录的正文没改过就直接用上次的题，
+    省掉 20 秒等待和一次检索调用。force=True 才重新生成（页面上的「换一批」）。
+    """
     doc = db.one(
         "SELECT id, title, body, kind FROM documents WHERE id = ? AND user_id = ?",
         (document_id, user_id),
     )
     if not doc:
         return {"error": "记录不存在。"}
+
+    if not force:
+        cached = load_cached(user_id, doc)
+        if cached:
+            cached["doc"] = doc          # 缓存里没存，这里补回，模板结构保持一致
+            cached["cached"] = True
+            return cached
+
     if not llm.available():
         return {"error": "模型服务不可用，暂时无法预演。记录本身不受影响。"}
 
     source = f"{doc['title']}\n{doc['body']}"
+
+    # 先查一遍近期真题。查不到就是空列表，正文里也不会多出一段空话。
+    refs = websearch.search(f"{doc['title'][:24]} 面试 常见问题 2025", count=6) if websearch.available() else []
+    ref_block = ""
+    if refs:
+        lines = "\n".join(f"- {r['snippet']}" for r in refs if r.get("snippet"))
+        if lines:
+            ref_block = (
+                "\n\n以下是近期公开面试题的检索结果。**只能用来决定「问什么方向」**：\n"
+                "不要把这些内容当成本条记录里发生过的事实，也不要照抄原题，"
+                "问题仍要对准上面这条记录。\n" + lines
+            )
+
     messages = [
         {"role": "system", "content": INTERVIEW_SYS},
         {
             "role": "user",
-            "content": f"标题：{doc['title']}\n类型：{doc['kind']}\n记录正文：\n{doc['body'][:6000]}",
+            "content": f"标题：{doc['title']}\n类型：{doc['kind']}\n记录正文：\n{doc['body'][:6000]}{ref_block}",
         },
     ]
 
@@ -113,4 +177,15 @@ def prepare(user_id: int, document_id: int) -> dict:
         "cannot": sum(1 for q in questions if q["status"] == "cannot"),
         "total": len(questions),
     }
-    return {"doc": doc, "questions": questions, "stats": stats}
+    payload = {
+        "doc": doc,
+        "questions": questions,
+        "stats": stats,
+        "web": {"count": len(refs), "provider": config.SEARCH_PROVIDER} if refs else None,
+        "cached": False,
+    }
+    try:
+        _save_cache(user_id, doc, payload)
+    except Exception:  # noqa: BLE001 存缓存失败不该让这次结果作废
+        pass
+    return payload

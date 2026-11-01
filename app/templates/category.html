@@ -21,7 +21,7 @@
     <p class="mt-1.5 text-[13px] text-[var(--ink-3)]">{{ all_total }} 条记录 · {{ card_count }} 张要点卡</p>
   </div>
   <div class="flex shrink-0 items-center gap-2">
-    <a href="/kg?kind={{ kind }}" class="btn btn-ghost">知识图谱</a>
+    <a href="/kg?kind={{ kind }}" class="btn btn-ghost">{{ graph_label }}</a>
     <a href="/new?kind={{ kind }}" class="btn btn-primary">加一条</a>
   </div>
 </div>
@@ -113,3 +113,5 @@
 </script>
 
 {% endblock %}
+
+{% block footer_note %}{% if not total %}{{ kind_label }}还是空的。点右上角「添加」记第一条。{% elif q %}{{ kind_label }} · 搜「{{ q }}」命中 {{ total }} 条。搜的是标题与正文。{% elif active_tag %}{{ kind_label }} · 「{{ active_tag }}」{{ total }} 条。按标签筛时只算每条记录的主标签。{% elif folders %}{{ kind_label }} · {{ total }} 条 · {{ folders|length }} 个标签。按标签看，能发现同一类里缺着的那块。{% else %}{{ kind_label }} · {{ total }} 条。按标签看，能发现同一类里缺着的那块。{% endif %}{% endblock %}

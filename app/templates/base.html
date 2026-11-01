@@ -6,7 +6,11 @@
   <meta name="theme-color" content="#0D9488">
   <title>{% block title %}成长档案{% endblock %}</title>
   <!-- 先打上 js 标记：没有脚本时 .reveal 不隐藏内容，避免「列表一片空白」 -->
-  <script>document.documentElement.classList.add('js');</script>
+  <!-- 侧边栏的折叠态也要在首屏之前定下来，否则会先按展开画一遍再收，闪一下 -->
+  <script>
+    document.documentElement.classList.add('js');
+    try { if (localStorage.getItem('ga-nav-mini') === '1') document.documentElement.classList.add('nav-mini'); } catch (e) {}
+  </script>
   <script src="/static/tailwind.js"></script>
   <style>
     /* ============================================================
@@ -245,6 +249,35 @@
     .nav-item.is-active{animation:navIn .55s var(--ease-out) both}
     @keyframes navIn{from{opacity:.25;transform:translateX(-10px)}to{opacity:1;transform:none}}
 
+    /* ============ 侧边栏折叠 ============
+       宽窄两档：224px（图标+文字）/ 64px（纯图标）。
+       状态类挂在 <html> 上，head 里的内联脚本在首屏之前就定下来，不会先展开再收起。
+       折叠后每项靠 title 属性给原生 tooltip，不额外做浮层 —— 导航是高频操作，
+       浮层跟着鼠标反而碍事。 */
+    /* 这里不能写 position:relative —— ID 选择器优先级高于 md:sticky 类，
+       会把侧栏的 sticky 顶掉，页面一滚侧栏就跟着走。sticky 本身是定位元素，
+       折叠按钮用 absolute 挂在它上面照样成立。 */
+    #side{transition:width .28s var(--ease-soft)}
+    .nav-caret{transition:transform .28s var(--ease-soft)}
+    html.nav-mini .nav-caret{transform:rotate(180deg)}
+    @media (min-width:768px){
+      #side{width:224px}
+      html.nav-mini #side{width:64px}
+      html.nav-mini #side .nav-label,
+      html.nav-mini #side .nav-dot,
+      html.nav-mini #side .brand-text,
+      html.nav-mini #side .side-user{display:none}
+      html.nav-mini #side .nav-item{justify-content:center;padding-left:0;padding-right:0}
+      html.nav-mini #side .nav-item:not(.is-active):hover{transform:none}
+      html.nav-mini #side .side-brand{justify-content:center;padding-left:0;padding-right:0}
+      html.nav-mini #side nav{padding-left:10px;padding-right:10px}
+      /* 分组标题收成一条细线，比留空更有分区感 */
+      html.nav-mini #side .side-group{
+        height:1px;margin:14px 16px;padding:0;overflow:hidden;
+        font-size:0;line-height:0;color:transparent;background:rgba(26,29,25,.09);
+      }
+    }
+
     .link-u{position:relative}
     .link-u::after{content:"";position:absolute;left:0;bottom:-2px;height:1px;width:0;background:var(--brand);transition:width var(--t-mid) var(--ease-out)}
     .link-u:hover::after{width:100%}
@@ -362,6 +395,127 @@
     .no-scrollbar{scrollbar-width:none;-ms-overflow-style:none}
     .no-scrollbar::-webkit-scrollbar{display:none}
 
+
+    /* ============ 右键菜单 / 确认弹窗 / 多选 ============ */
+    /* 菜单用 fixed 定位在鼠标处，出现时只做极短的缩放淡入 ——
+       右键菜单是「立刻要用」的东西，动画拖长反而让人等。 */
+    .ctx-menu{
+      position:fixed;z-index:70;min-width:150px;padding:5px;border-radius:12px;
+      background:#fff;box-shadow:0 16px 40px -18px rgba(26,29,25,.45),0 0 0 1px rgba(26,29,25,.08);
+      opacity:0;transform:scale(.96);transform-origin:top left;pointer-events:none;
+      transition:opacity .12s var(--ease-std), transform .14s var(--ease-out);
+    }
+    .ctx-menu.open{opacity:1;transform:none;pointer-events:auto}
+    .ctx-item{
+      display:flex;width:100%;align-items:center;gap:9px;border-radius:8px;
+      padding:7px 10px;font-size:13px;color:var(--ink-2);text-align:left;
+      transition:background-color .14s, color .14s;
+    }
+    .ctx-item:hover{background:var(--brand-tint);color:var(--brand-deep)}
+    .ctx-item[data-act="delete"]{color:#B4231F}
+    .ctx-item[data-act="delete"]:hover{background:rgba(220,38,38,.07);color:#8F1C18}
+    .ctx-item svg{width:14px;height:14px;flex:none;opacity:.75}
+    .ctx-sep{height:1px;margin:4px 6px;background:rgba(26,29,25,.07)}
+
+    /* 确认弹窗：从中间浮出，遮罩只压暗一点点，让用户仍看得见要删的是哪一条 */
+    #modal-mask{
+      position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;
+      padding:20px;background:rgba(26,29,25,.28);backdrop-filter:blur(2px);
+      opacity:0;pointer-events:none;transition:opacity .2s var(--ease-std);
+    }
+    #modal-mask.open{opacity:1;pointer-events:auto}
+    #modal-card{
+      width:100%;max-width:400px;border-radius:16px;background:#fff;padding:22px 22px 18px;
+      box-shadow:0 30px 70px -30px rgba(26,29,25,.55),0 0 0 1px rgba(26,29,25,.06);
+      transform:translateY(10px) scale(.97);transition:transform .26s cubic-bezier(.34,1.4,.64,1);
+    }
+    #modal-mask.open #modal-card{transform:none}
+    #modal-title{font-size:15.5px;font-weight:600;color:var(--ink-1)}
+    #modal-desc{margin-top:8px;font-size:13px;line-height:1.65;color:var(--ink-3)}
+    #modal-desc b{color:var(--ink-1);font-weight:500}
+    .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
+    .modal-btn{
+      border-radius:9px;padding:7px 16px;font-size:13px;
+      transition:background-color .16s, color .16s, box-shadow .16s, transform .12s;
+    }
+    .modal-btn:active{transform:scale(.97)}
+    /* 弹窗按钮会自动聚焦（键盘能直接回车），浏览器默认那圈蓝紫色焦点环
+       套在红色主按钮上很突兀，换成跟随按钮色调的一圈淡光。 */
+    .modal-btn:focus{outline:none}
+    .modal-btn.ghost:focus-visible{box-shadow:inset 0 0 0 1px rgba(26,29,25,.1),0 0 0 3px rgba(26,29,25,.1)}
+    .modal-btn.primary:focus-visible{box-shadow:0 6px 16px -8px rgba(13,148,136,.9),0 0 0 3px rgba(13,148,136,.3)}
+    .modal-btn.danger:focus-visible{box-shadow:0 6px 16px -8px rgba(220,38,38,.85),0 0 0 3px rgba(220,38,38,.28)}
+    /* 弹窗按钮会自动聚焦（键盘能直接回车），浏览器默认那圈蓝紫色焦点环
+       套在红色主按钮上很突兀，换成跟随按钮色调的一圈淡光。 */
+    .modal-btn:focus{outline:none}
+    .modal-btn.ghost:focus-visible{box-shadow:inset 0 0 0 1px rgba(26,29,25,.1),0 0 0 3px rgba(26,29,25,.1)}
+    .modal-btn.primary:focus-visible{box-shadow:0 6px 16px -8px rgba(13,148,136,.9),0 0 0 3px rgba(13,148,136,.3)}
+    .modal-btn.danger:focus-visible{box-shadow:0 6px 16px -8px rgba(220,38,38,.85),0 0 0 3px rgba(220,38,38,.28)}
+    .modal-btn.ghost{color:var(--ink-2);box-shadow:inset 0 0 0 1px rgba(26,29,25,.1);background:#fff}
+    .modal-btn.ghost:hover{background:rgba(26,29,25,.035);color:var(--ink-1)}
+    .modal-btn.primary{background:var(--brand);color:#fff;box-shadow:0 6px 16px -8px rgba(13,148,136,.9)}
+    .modal-btn.primary:hover{background:var(--brand-deep)}
+    .modal-btn.danger{background:#DC2626;color:#fff;box-shadow:0 6px 16px -8px rgba(220,38,38,.85)}
+    .modal-btn.danger:hover{background:#B4231F}
+
+    /* 轻提示：固定在视口顶部中间，不随页面滚动。
+       列表里的操作（删除、批量删除）常常发生在页面下半部分，
+       顶部那条静态提示要滚回去才看得到 —— 等于没有提示。 */
+    #toast-stack{
+      position:fixed;left:50%;top:16px;z-index:95;transform:translateX(-50%);
+      display:flex;flex-direction:column;align-items:center;gap:8px;
+      pointer-events:none;width:max-content;max-width:calc(100vw - 32px);
+    }
+    .toast{
+      display:flex;align-items:center;gap:8px;
+      padding:9px 16px;border-radius:999px;
+      background:rgba(26,29,25,.93);color:#fff;
+      font-size:13px;line-height:1.5;
+      box-shadow:0 14px 32px -16px rgba(0,0,0,.55);
+      opacity:0;transform:translateY(-10px) scale(.97);
+      transition:opacity .2s var(--ease-std), transform .26s var(--ease-out);
+      backdrop-filter:blur(6px);
+    }
+    .toast.in{opacity:1;transform:none}
+    .toast.out{opacity:0;transform:translateY(-8px) scale(.98)}
+    .toast svg{width:15px;height:15px;flex:none}
+    .toast[data-type="ok"] svg{color:#5EEAD4}
+    .toast[data-type="warn"] svg{color:#FCD34D}
+    .toast[data-type="error"] svg{color:#FCA5A5}
+    .toast b{font-weight:500}
+
+    /* 多选：选中卡整块换成品牌色实心，里面的文字和图标全部反白 */
+    .rec-card{position:relative;transition:background .2s var(--ease-soft), box-shadow .2s var(--ease-soft), transform .2s var(--ease-out)}
+    body.is-selecting .rec-card{cursor:pointer}
+    body.is-selecting .rec-card:hover{transform:translateY(-1px)}
+    .rec-card.is-selected{
+      background:linear-gradient(145deg,var(--brand),var(--brand-deep)) !important;
+      box-shadow:0 12px 26px -14px rgba(13,148,136,.85) !important;
+    }
+    .rec-card.is-selected *{color:#fff !important}
+    .rec-card.is-selected .rec-kind{background:rgba(255,255,255,.22) !important}
+    .rec-card.is-selected .rec-dot{background:#fff !important}
+
+    /* 多选浮条：贴在底部中间，不遮挡列表 */
+    #sel-bar{
+      position:fixed;left:50%;bottom:22px;z-index:60;
+      display:flex;align-items:center;gap:6px;padding:8px 10px 8px 16px;
+      border-radius:999px;background:rgba(26,29,25,.94);color:#fff;
+      box-shadow:0 18px 40px -18px rgba(0,0,0,.6);
+      transform:translate(-50%,16px);opacity:0;pointer-events:none;
+      transition:opacity .22s var(--ease-std), transform .28s var(--ease-out);
+    }
+    #sel-bar.on{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+    #sel-bar .sel-count{font-size:12.5px;color:rgba(255,255,255,.86);min-width:64px}
+    #sel-bar button{
+      border-radius:999px;padding:5px 12px;font-size:12.5px;color:#fff;
+      transition:background-color .16s;
+    }
+    #sel-bar button:hover{background:rgba(255,255,255,.14)}
+    #sel-bar button.danger{color:#FFB4B0}
+    #sel-bar button.danger:hover{background:rgba(220,38,38,.28)}
+    #sel-bar button:disabled{opacity:.35;cursor:not-allowed}
+
     /* ============ 降级 ============ */
     @media (prefers-reduced-motion: reduce){
       *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
@@ -386,10 +540,11 @@
   'star':    'M12 4l2.3 4.9 5.2.7-3.8 3.7.9 5.2-4.6-2.5-4.6 2.5.9-5.2L4.5 9.6l5.2-.7z',
   'cards':   'M7 8.5h10M7 12h10M7 15.5h6M5 4.5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-13a1 1 0 0 1 1-1z',
   'chat':    'M4 6.5A1.5 1.5 0 0 1 5.5 5h13A1.5 1.5 0 0 1 20 6.5v8a1.5 1.5 0 0 1-1.5 1.5H9l-5 3.5z',
-  'target':  'M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 11.5a.5.5 0 1 0 0 1 .5.5 0 0 0 0-1z'
+  'target':  'M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 11.5a.5.5 0 1 0 0 1 .5.5 0 0 0 0-1z',
+  'mic':     'M12 4a2.5 2.5 0 0 0-2.5 2.5v5a2.5 2.5 0 0 0 5 0v-5A2.5 2.5 0 0 0 12 4zM6.5 11a5.5 5.5 0 0 0 11 0M12 16.5V20M9 20h6'
 } %}
 {% macro nav(href, label, active, icon=None) -%}
-<a href="{{ href }}"
+<a href="{{ href }}" title="{{ label }}"
    class="nav-item group relative flex items-center gap-2.5 rounded-[10px] px-3 py-[7px] text-[13.5px]
           {% if active %}is-active bg-[var(--brand)] font-medium text-white shadow-[0_8px_18px_-10px_rgba(13,148,136,.9)]{% else %}text-[var(--ink-2)] hover:bg-white/80 hover:text-[var(--ink-1)] hover:shadow-[0_1px_2px_rgba(26,29,25,.05)]{% endif %}">
   {% if icon %}
@@ -400,35 +555,43 @@
     <path d="{{ ICONS.get(icon, '') }}"/>
   </svg>
   {% endif %}
-  <span class="truncate">{{ label }}</span>
-  {% if active %}<span class="ml-auto h-1.5 w-1.5 rounded-full bg-white/85"></span>{% endif %}
+  <span class="nav-label truncate">{{ label }}</span>
+  {% if active %}<span class="nav-dot ml-auto h-1.5 w-1.5 rounded-full bg-white/85"></span>{% endif %}
 </a>
 {%- endmacro %}
 
 <div class="min-h-screen md:flex">
 {% block shell %}
 
-  <aside class="hidden shrink-0 border-r border-[rgba(26,29,25,.06)] bg-white/55 backdrop-blur-md md:sticky md:top-0 md:flex md:h-screen md:w-56 md:flex-col">
-    <a href="/" class="group flex h-16 items-center gap-2.5 px-5">
-      <span class="flex h-7 w-7 items-center justify-center rounded-[9px] text-[13px] font-semibold text-white shadow-[0_4px_10px_-4px_rgba(13,148,136,.7)] transition-transform duration-300 group-hover:scale-105"
+  <aside id="side" class="hidden shrink-0 border-r border-[rgba(26,29,25,.06)] bg-white/55 backdrop-blur-md md:sticky md:top-0 md:flex md:h-screen md:flex-col">
+    {# 折叠按钮压在侧栏右边缘上：展开 / 收起只换箭头方向，位置不动，眼睛不用重新找 #}
+    <button type="button" id="nav-toggle" aria-expanded="true" title="收起导航"
+            class="absolute -right-[11px] top-[22px] z-20 hidden h-[22px] w-[22px] items-center justify-center rounded-full bg-white text-[var(--ink-3)] shadow-[0_2px_8px_-2px_rgba(26,29,25,.25),0_0_0_1px_rgba(26,29,25,.07)] transition-all duration-200 hover:text-[var(--brand-deep)] hover:shadow-[0_3px_10px_-2px_rgba(26,29,25,.32),0_0_0_1px_var(--brand-edge)] md:flex">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
+           stroke-linejoin="round" class="nav-caret h-3 w-3"><path d="m15 18-6-6 6-6"/></svg>
+    </button>
+
+    <a href="/" title="成长档案" class="side-brand group flex h-16 items-center gap-2.5 px-5">
+      <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-[9px] text-[13px] font-semibold text-white shadow-[0_4px_10px_-4px_rgba(13,148,136,.7)] transition-transform duration-300 group-hover:scale-105"
             style="background:linear-gradient(145deg,var(--brand),var(--brand-deep))">G</span>
-      <span class="text-[14.5px] font-semibold tracking-[-.015em]">成长档案</span>
+      <span class="brand-text text-[14.5px] font-semibold tracking-[-.015em]">成长档案</span>
     </a>
     <nav class="flex-1 space-y-0.5 overflow-y-auto px-2.5 pb-3">
       {{ nav('/', '概览', p == '/', 'home') }}
       {{ nav('/search', '检索', p.startswith('/search'), 'search') }}
-      <div class="eyebrow px-3 pb-1.5 pt-5">分类</div>
+      <div class="eyebrow side-group px-3 pb-1.5 pt-5">分类</div>
       {{ nav('/c/course', '课程', p.startswith('/c/course'), 'book') }}
       {{ nav('/c/skill', '技能', p.startswith('/c/skill'), 'spark') }}
       {{ nav('/c/award', '竞赛', p.startswith('/c/award'), 'trophy') }}
       {{ nav('/c/project', '项目', p.startswith('/c/project'), 'folder') }}
       {{ nav('/c/trait', '特长', p.startswith('/c/trait'), 'star') }}
-      <div class="eyebrow px-3 pb-1.5 pt-5">能力</div>
+      <div class="eyebrow side-group px-3 pb-1.5 pt-5">能力</div>
       {{ nav('/cards', '要点卡', p.startswith('/cards'), 'cards') }}
       {{ nav('/ask', '提问', p.startswith('/ask'), 'chat') }}
+      {{ nav('/interview', '面试预演', p == '/interview', 'mic') }}
       {{ nav('/match', '岗位匹配', p.startswith('/match'), 'target') }}
     </nav>
-    <div class="mx-2 mb-2 rounded-[10px] px-3 py-2.5 text-[11.5px] text-[var(--ink-4)]">
+    <div class="side-user mx-2 mb-2 rounded-[10px] px-3 py-2.5 text-[11.5px] text-[var(--ink-4)]">
       {% if user %}
       <div class="truncate">{{ user.email }}</div>
       <form action="/logout" method="post" class="mt-1"><button class="transition-colors hover:text-[var(--ink-1)]">退出</button></form>
@@ -469,8 +632,11 @@
       {% block content %}{% endblock %}
     </main>
 
-    <footer class="mx-auto w-full max-w-4xl px-4 pb-12 text-[11.5px] text-[var(--ink-4)] md:px-6">
-      记下来不算数。能在面试里讲清楚，才算。
+    {# 页脚这句由各页自己写：同一句话贴在十几个功能完全不同的页面上，
+       既没提供信息，也谈不上调性。各模板覆盖 footer_note，
+       有数字的带上本页真实数字（记录数、卡数、章节数），没有的就说这一页能干什么。 #}
+    <footer class="mx-auto w-full max-w-4xl px-4 pb-12 text-[11.5px] leading-relaxed text-[var(--ink-4)] [text-wrap:pretty] md:px-6">
+      {% block footer_note %}把做过的事记下来，也讲得出来。{% endblock %}
     </footer>
   </div>
 </div>
@@ -487,6 +653,30 @@
 </button>
 
 <script>
+  /* ---------- 侧边栏折叠 ---------- */
+  (() => {
+    const btn = document.getElementById('nav-toggle');
+    if (!btn) return;
+    const root = document.documentElement;
+    const sync = () => {
+      const mini = root.classList.contains('nav-mini');
+      btn.setAttribute('aria-expanded', mini ? 'false' : 'true');
+      btn.title = mini ? '展开导航' : '收起导航';
+    };
+    sync();
+    btn.addEventListener('click', () => {
+      root.classList.toggle('nav-mini');
+      try { localStorage.setItem('ga-nav-mini', root.classList.contains('nav-mini') ? '1' : '0'); } catch (e) {}
+      sync();
+    });
+    // `[` 切换（和多数编辑器一致），输入框里打字时不抢键
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== '[' || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable) return;
+      btn.click();
+    });
+  })();
+
   /* ---------- 顶栏投影 / 阅读进度 / 回到顶部 ---------- */
   const topbar = document.getElementById('topbar');
   const bar = document.getElementById('progress');
@@ -808,5 +998,375 @@
 })();
 </script>
 
+
+{# ============ 全局：右键菜单 / 确认弹窗 / 多选浮条 ============ #}
+<div id="ctx-menu" class="ctx-menu" role="menu" aria-hidden="true">
+  <button type="button" class="ctx-item" role="menuitem" data-act="view">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="2.6"/></svg>
+    查看
+  </button>
+  <button type="button" class="ctx-item" role="menuitem" data-act="edit">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17z"/></svg>
+    编辑
+  </button>
+  <button type="button" class="ctx-item" role="menuitem" data-act="select">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l2.5 2.5L16 8"/><rect x="3.5" y="3.5" width="17" height="17" rx="4"/></svg>
+    多选
+  </button>
+  <div class="ctx-sep"></div>
+  <button type="button" class="ctx-item" role="menuitem" data-act="delete">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9.5 7V5h5v2M6.5 7l.8 12.1a1.5 1.5 0 0 0 1.5 1.4h6.4a1.5 1.5 0 0 0 1.5-1.4L17.5 7"/></svg>
+    删除
+  </button>
+</div>
+
+<div id="modal-mask" aria-hidden="true">
+  <div id="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <h2 id="modal-title"></h2>
+    <p id="modal-desc"></p>
+    <div class="modal-actions">
+      <button type="button" class="modal-btn ghost" id="modal-cancel">取消</button>
+      <button type="button" class="modal-btn primary" id="modal-ok">确定</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-stack" aria-live="polite" aria-atomic="true"></div>
+
+<div id="sel-bar" role="toolbar" aria-label="批量操作">
+  <span class="sel-count" id="sel-count">已选 0 条</span>
+  <button type="button" id="sel-all">全选</button>
+  <button type="button" id="sel-del" class="danger" disabled>删除</button>
+  <button type="button" id="sel-exit">退出</button>
+</div>
+
+
+<script>
+/* ============================================================
+   记录卡片：右键菜单 / 多选 / 删除
+   以前删一条要「进详情 → 点编辑 → 拉到页面底部 → 点删除」，
+   四步才能完成一个高频操作。现在右键就能看到 / 编辑 / 删除，
+   确认框也换成页面中间的弹窗，不再用浏览器原生 confirm。
+   ============================================================ */
+(() => {
+  const menu = document.getElementById('ctx-menu');
+  const mask = document.getElementById('modal-mask');
+  const mTitle = document.getElementById('modal-title');
+  const mDesc = document.getElementById('modal-desc');
+  const mOk = document.getElementById('modal-ok');
+  const mCancel = document.getElementById('modal-cancel');
+  const selBar = document.getElementById('sel-bar');
+  const selCount = document.getElementById('sel-count');
+  const selDel = document.getElementById('sel-del');
+  const selAll = document.getElementById('sel-all');
+  const selExit = document.getElementById('sel-exit');
+  if (!menu || !mask) return;
+
+  const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  /* ---------- 通用确认弹窗 ---------- */
+  let modalResolve = null;
+  const closeModal = (v) => {
+    mask.classList.remove('open');
+    mask.setAttribute('aria-hidden', 'true');
+    if (modalResolve) { modalResolve(v); modalResolve = null; }
+  };
+  window.confirmDialog = (opts = {}) => new Promise((resolve) => {
+    mTitle.textContent = opts.title || '确认操作';
+    mDesc.innerHTML = opts.desc || '';
+    mOk.textContent = opts.ok || '确定';
+    mOk.className = 'modal-btn ' + (opts.danger ? 'danger' : 'primary');
+    mCancel.textContent = opts.cancel || '取消';
+    mCancel.classList.toggle('hidden', opts.alert === true);
+    mask.classList.add('open');
+    mask.setAttribute('aria-hidden', 'false');
+    modalResolve = resolve;
+    setTimeout(() => mOk.focus(), 60);
+  });
+  mOk.addEventListener('click', () => closeModal(true));
+  mCancel.addEventListener('click', () => closeModal(false));
+  mask.addEventListener('click', (e) => { if (e.target === mask) closeModal(false); });
+  document.addEventListener('keydown', (e) => {
+    if (!mask.classList.contains('open')) return;
+    if (e.key === 'Escape') { e.preventDefault(); closeModal(false); }
+    if (e.key === 'Enter' && document.activeElement !== mCancel) { e.preventDefault(); closeModal(true); }
+  });
+
+  /* ---------- 轻提示 ----------
+     用法：toast('已删除') / toast('删不了', {type:'error'})
+     不打断操作，2.8 秒自己退场；有多条时纵向堆叠。 */
+  const toastStack = document.getElementById('toast-stack');
+  const ICON = {
+    ok: '<path d="M20 6 9 17l-5-5"/>',
+    warn: '<path d="M12 8v5M12 16.5v.5"/><circle cx="12" cy="12" r="9"/>',
+    error: '<path d="M15 9l-6 6M9 9l6 6"/><circle cx="12" cy="12" r="9"/>',
+  };
+  window.toast = (text, opts = {}) => {
+    if (!toastStack || !text) return;
+    const type = opts.type || 'ok';
+    const el = document.createElement('div');
+    el.className = 'toast';
+    el.dataset.type = type;
+    el.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                       stroke-linecap="round" stroke-linejoin="round">${ICON[type] || ICON.ok}</svg>
+                    <span>${esc(text)}</span>`;
+    toastStack.appendChild(el);
+    requestAnimationFrame(() => el.classList.add('in'));
+    const stay = opts.duration || 2800;
+    setTimeout(() => {
+      el.classList.add('out');
+      el.addEventListener('transitionend', () => el.remove(), { once: true });
+      // transitionend 没触发（标签页切走）时的兜底
+      setTimeout(() => el.remove(), 600);
+    }, stay);
+  };
+
+  // 服务端渲染时把要提示的话放进 window.__flash，这里统一弹
+  if (window.__flash) {
+    const f = window.__flash;
+    setTimeout(() => window.toast(typeof f === 'string' ? f : f.text, typeof f === 'string' ? {} : f), 80);
+    window.__flash = null;
+  }
+
+  /* ---------- 右键菜单 ---------- */
+  let ctxCard = null;
+  const openMenu = (x, y, card) => {
+    ctxCard = card;
+    menu.classList.add('open');
+    menu.setAttribute('aria-hidden', 'false');
+    const r = menu.getBoundingClientRect();
+    menu.style.left = Math.max(8, Math.min(x, innerWidth - r.width - 10)) + 'px';
+    menu.style.top = Math.max(8, Math.min(y, innerHeight - r.height - 10)) + 'px';
+  };
+  const closeMenu = () => {
+    menu.classList.remove('open');
+    menu.setAttribute('aria-hidden', 'true');
+    ctxCard = null;
+  };
+
+  document.addEventListener('contextmenu', (e) => {
+    const card = e.target.closest('[data-doc-id]');
+    if (!card) return;
+    e.preventDefault();
+    openMenu(e.clientX, e.clientY, card);
+  });
+
+  /* ---------- 长按 = 右键（触屏）----------
+     触屏没有右键，多选和删除在手机上就没入口。长按 0.5 秒弹同一个菜单。
+     两处要处理：
+     1) 手指一移动就取消 —— 列表是竖向滚动的，滚动时很容易按住不动一小会儿；
+     2) 长按弹菜单后，浏览器还会补一个 click，不拦住的话卡片会当场跳走。 */
+  let pressTimer = null, longPressed = false, startX = 0, startY = 0;
+
+  document.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) return;
+    const card = e.target.closest('[data-doc-id]');
+    if (!card) return;
+    const t = e.touches[0];
+    startX = t.clientX; startY = t.clientY;
+    clearTimeout(pressTimer);
+    pressTimer = setTimeout(() => {
+      pressTimer = null;
+      longPressed = true;
+      openMenu(t.clientX, t.clientY, card);
+      // 轻微震动给个确认，不支持就算了
+      if (navigator.vibrate) { try { navigator.vibrate(12); } catch (err) {} }
+    }, 500);
+  }, { passive: true });
+
+  document.addEventListener('touchmove', (e) => {
+    if (!pressTimer) return;
+    const t = e.touches[0];
+    if (Math.hypot(t.clientX - startX, t.clientY - startY) > 10) {
+      clearTimeout(pressTimer);
+      pressTimer = null;
+    }
+  }, { passive: true });
+
+  document.addEventListener('touchend', (e) => {
+    if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+    if (!longPressed) return;
+    // 吞掉长按之后那个 click：preventDefault 能拦默认动作，
+    // click 本身由下面的整卡点击处理再判一次 longPressed。
+    e.preventDefault();
+    setTimeout(() => { longPressed = false; }, 500);
+  }, { passive: false });
+
+  document.addEventListener('pointerdown', (e) => {
+    if (menu.classList.contains('open') && !menu.contains(e.target)) closeMenu();
+  }, { passive: true });
+  window.addEventListener('scroll', closeMenu, { passive: true });
+  window.addEventListener('resize', closeMenu);
+
+  /* ---------- 多选 ---------- */
+  let selecting = false;
+  const syncSel = () => {
+    const n = document.querySelectorAll('.rec-card.is-selected').length;
+    selCount.textContent = '已选 ' + n + ' 条';
+    selDel.disabled = n === 0;
+  };
+  const enterSelect = () => {
+    selecting = true;
+    document.body.classList.add('is-selecting');
+    selBar.classList.add('on');
+    syncSel();
+  };
+  const exitSelect = () => {
+    selecting = false;
+    document.body.classList.remove('is-selecting');
+    selBar.classList.remove('on');
+    document.querySelectorAll('.rec-card.is-selected').forEach((c) => c.classList.remove('is-selected'));
+    syncSel();
+  };
+  const toggleCard = (card, force) => {
+    const on = force === undefined ? !card.classList.contains('is-selected') : force;
+    card.classList.toggle('is-selected', on);
+    syncSel();
+  };
+
+  if (selAll) selAll.addEventListener('click', () => {
+    const all = [...document.querySelectorAll('.rec-card[data-doc-id]')];
+    if (!all.length) return;
+    const every = all.every((c) => c.classList.contains('is-selected'));
+    all.forEach((c) => c.classList.toggle('is-selected', !every));
+    syncSel();
+  });
+  if (selExit) selExit.addEventListener('click', exitSelect);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && selecting && !mask.classList.contains('open')) exitSelect();
+  });
+
+  /* ---------- 删除 ---------- */
+  const dropCard = (card) => {
+    card.animate(
+      [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(-6px)' }],
+      { duration: 170, easing: 'ease-in' },
+    ).onfinish = () => card.remove();
+  };
+
+  const deleteOne = async (card) => {
+    const id = card.dataset.docId;
+    const title = card.dataset.docTitle || '这条记录';
+    const ok = await window.confirmDialog({
+      title: '删除这条记录？',
+      desc: '<b>' + esc(title) + '</b><br>正文、切片、要点卡和图片会一起删除，无法恢复。',
+      ok: '删除',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      const r = await fetch('/doc/' + id + '/delete', {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'fetch' },
+      });
+      if (!r.ok) throw new Error(r.status);
+      dropCard(card);
+      window.toast('已删除「' + (title.length > 16 ? title.slice(0, 16) + '…' : title) + '」');
+    } catch (err) {
+      window.toast('删除失败，网络或服务异常', { type: 'error' });
+    }
+  };
+
+  if (selDel) selDel.addEventListener('click', async () => {
+    const cards = [...document.querySelectorAll('.rec-card.is-selected')];
+    if (!cards.length) return;
+    const ok = await window.confirmDialog({
+      title: '删除这 ' + cards.length + ' 条记录？',
+      desc: '这些记录的正文、切片、要点卡和图片会一起删除，无法恢复。',
+      ok: '全部删除',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      const r = await fetch('/docs/bulk-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: cards.map((c) => Number(c.dataset.docId)) }),
+      });
+      if (!r.ok) throw new Error(r.status);
+      cards.forEach(dropCard);
+      exitSelect();
+      window.toast('已删除 ' + cards.length + ' 条记录');
+    } catch (err) {
+      window.toast('删除失败，网络或服务异常', { type: 'error' });
+    }
+  });
+
+  /* ---------- 菜单项 ---------- */
+  menu.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-act]');
+    if (!btn || !ctxCard) return;
+    const card = ctxCard;
+    const act = btn.dataset.act;
+    closeMenu();
+    if (act === 'view') location.href = '/doc/' + card.dataset.docId;
+    else if (act === 'edit') location.href = card.dataset.docEdit || ('/doc/' + card.dataset.docId + '/edit');
+    else if (act === 'select') { if (!selecting) enterSelect(); toggleCard(card, true); }
+    else if (act === 'delete') deleteOne(card);
+  });
+
+  /* ---------- 记住上次访问 ----------
+     每次打开内页都记下「路径 + 页面标题」，首页顶部据此给一个回跳入口。
+     只存一个位置（不是历史列表）—— 要的是「接着上次看」，不是浏览记录。 */
+  (() => {
+    const path = location.pathname + location.search;
+    if (path === '/' || /^\/(login|logout|demo|healthz)/.test(path)) return;
+    try {
+      localStorage.setItem('ga-last-visit', JSON.stringify({
+        path,
+        title: document.title.replace(/\s*·\s*成长档案\s*$/, ''),
+        ts: Date.now(),
+      }));
+    } catch (e) { /* 隐私模式下写不了，忽略 */ }
+  })();
+
+  (() => {
+    const slot = document.getElementById('resume-slot');
+    if (!slot) return;
+    let v = null;
+    try { v = JSON.parse(localStorage.getItem('ga-last-visit') || 'null'); } catch (e) { return; }
+    if (!v || !v.path) return;
+    if (Date.now() - (v.ts || 0) > 7 * 864e5) return;   // 一周前的就不提了
+    const label = slot.querySelector('[data-resume-title]');
+    if (label) label.textContent = v.title || v.path;
+    slot.href = v.path;
+    slot.classList.remove('hidden');
+    slot.classList.add('inline-flex');
+  })();
+
+  /* ---------- 表单提交前确认（替代原生 confirm）----------
+     用法：<form data-confirm-submit data-confirm-title="…" data-confirm-danger="1"> */
+  document.addEventListener('submit', async (e) => {
+    const form = e.target.closest('form[data-confirm-submit]');
+    if (!form || form.dataset.confirmed === '1') return;
+    e.preventDefault();
+    const ok = await window.confirmDialog({
+      title: form.dataset.confirmTitle || '确认操作',
+      desc: form.dataset.confirmDesc || '',
+      ok: form.dataset.confirmOk || '确定',
+      danger: form.dataset.confirmDanger === '1',
+    });
+    if (!ok) return;
+    form.dataset.confirmed = '1';
+    form.submit();
+  });
+
+  /* ---------- 整卡点击 ---------- */
+  document.addEventListener('click', (e) => {
+    // 长按刚弹出菜单时，浏览器补发的 click 不能当成「点开这一条」
+    if (longPressed) { e.preventDefault(); e.stopPropagation(); return; }
+    const card = e.target.closest('.rec-card[data-doc-id]');
+    if (!card) return;
+    if (selecting) {
+      // 多选态下，卡片里的链接也不该跳走
+      if (e.target.closest('a')) e.preventDefault();
+      toggleCard(card);
+      return;
+    }
+    if (e.target.closest('a, button')) return;   // 卡内原有链接/按钮照旧
+    location.href = '/doc/' + card.dataset.docId;
+  });
+})();
+</script>
 </body>
 </html>

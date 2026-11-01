@@ -4,17 +4,18 @@ from __future__ import annotations
 import html as html_lib
 import json
 import math
+import re
 import datetime as dt
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import BackgroundTasks, FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi import BackgroundTasks, FastAPI, File, Form, Query, Request, UploadFile
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from . import auth, cards, charts, config, db, embed, images, importers, ingest, interview, kg, llm, match, mindmap, rag, seed, study
+from . import auth, cards, charts, config, db, embed, images, importers, ingest, interview, kg, llm, match, mindmap, prose, rag, seed, study, websearch
 from .search import (
     browse,
     browse_count,
@@ -130,7 +131,11 @@ def login_page(request: Request):
 
 
 @app.post("/login")
-def do_login(request: Request, email: str = Form(...), password: str = Form(...)):
+# 这些表单字段一律给默认空串，不写成 Form(...)。
+# 声明为必填时，空提交会被 FastAPI 拦成 422 并落到通用错误页 ——
+# 用户只看到「请求出错了」，不知道自己漏填了什么。
+# 给默认值后走各自的业务校验，能回到页面说一句人话。
+def do_login(request: Request, email: str = Form(""), password: str = Form("")):
     user = auth.login_user(email, password)
     if not user:
         return TEMPLATES.TemplateResponse(
@@ -200,69 +205,68 @@ def home(request: Request, page: int = 1, sort: str = "time"):
         user["id"], _capability_map(), tuple(ingest.KINDS.values())
     )
 
-    # 环形图最多 5–6 段：段数再多、或者某段弧长比环的厚度还短，圆头端点就只能
-    # 鼓成一颗粒子，粗细也会显得不一致。所以把占比 <5% 的域并进「其他」，
-    # 展开明细交给点击后的细分视图，信息不丢。
-    MIN_SHARE = 0.05
-    big = [b for b in buckets if total_docs and b["n"] / total_docs >= MIN_SHARE]
-    small = [b for b in buckets if total_docs and b["n"] / total_docs < MIN_SHARE]
-    if small and len(big) >= 2:
-        merged_records: list[dict] = []
-        for b in small:
-            for r in b["records"]:
-                if len(merged_records) < 4 and all(r["id"] != x["id"] for x in merged_records):
-                    merged_records.append(r)
-        big = big + [
-            {
-                "name": "其他",
-                "n": sum(b["n"] for b in small),
-                "tags": [{"name": b["name"], "n": b["n"]} for b in small],
-                "records": merged_records,
-            }
-        ]
-    elif small and not big:
-        big = buckets  # 全部都很小，合并就没有意义了
+    # 环形图按记录类型分（课程 / 技能 / 竞赛 / 项目 / 特长）。
+    #
+    # 之前按能力域分，出了两个问题：能力域要先过标签映射，没标签或标签不在映射表里
+    # 的记录只能落进「其他」；而占比 <5% 的小域又会被合并成另一个「其他」——
+    # 于是图例里并排出现两个「其他」，各 2 条，谁也说不清哪个是哪个。
+    # 记录类型是每条记录必有的属性，没有映射、不需要兜底，标签也是一眼能懂的词。
+    kind_counts = {
+        r["kind"]: r["n"]
+        for r in db.rows(
+            "SELECT kind, COUNT(*) AS n FROM documents WHERE user_id = ? GROUP BY kind",
+            (user["id"],),
+        )
+    }
+    kind_order = [k for k in ingest.KINDS if kind_counts.get(k)]
+    if not kind_order:
+        kind_order = list(ingest.KINDS)      # 空库时画一个灰环，不留白框
 
-    # 能力域配色按映射表顺序固定分配，环形图与雷达图共用同一套；
-    # 「其他」不属于任何能力域，走中性色。
+    pie_items = [(ingest.KINDS[k], kind_counts.get(k, 0)) for k in kind_order]
+    pie_svg = charts.donut(
+        pie_items, size=184, thickness=28, keys=list(kind_order),
+        colors=[charts.KIND_COLORS[k] for k in kind_order],
+    )
+
+    # 图例点进去直接到该分类的列表页；这里没有「细分视图」，
+    # 记录类型本身已经是最终粒度，再拆就只能拆到单条记录了。
+    legend = [
+        {
+            "label": ingest.KINDS[k],
+            "value": kind_counts.get(k, 0),
+            "key": k,
+            "color": charts.KIND_COLORS[k],
+            "href": f"/c/{k}",
+            "tags": [],
+            "records": [],
+            "merged": False,
+        }
+        for k in kind_order
+    ]
+
+    # 能力域配色按映射表顺序固定分配，雷达图用
     domains = [k for k in _capability_map() if not k.startswith("_")]
     dcolors = charts.domain_colors(domains)
 
     def color_of(name: str) -> str:
         return dcolors.get(name, charts.OTHER_COLOR)
 
-    pie_items = [(b["name"], b["n"]) for b in big]
-    keys = ["__other__" if b["name"] == "其他" else b["name"] for b in big]
-    # 扇区颜色必须和下面的图例同源，否则同一个域在图里和在图例里是两个颜色
-    pie_svg = charts.donut(
-        pie_items, size=184, thickness=28, keys=keys,
-        colors=[color_of(b["name"]) for b in big],
-    )
-
-    legend = [
-        {
-            "label": b["name"],
-            "value": b["n"],
-            "key": keys[i],
-            "color": color_of(b["name"]),
-            "tags": b["tags"],
-            "records": b["records"],
-            "merged": b["name"] == "其他",
-        }
-        for i, b in enumerate(big)
-    ]
-
     # 放大视图用六边形雷达图：轴必须固定，映射表里有几个能力域就画几条，
     # 没有记录的域也要出现 —— 0 值落在圆心，短板才看得见。
     # 顺序按记录数降序，优势在上、短板在下，扫一眼就知道强在哪、缺在哪。
-    counts = {b["name"]: b["n"] for b in buckets}
+    # 雷达轴要能点开细分视图，所以把该域下的标签构成与涉及记录一起带上。
+    # 环形图改按记录类型分之后，这些字段就只有雷达图在用了 ——
+    # 不带的话点轴进去是一片空白（openDetail 找不到 tags）。
+    by_name = {b["name"]: b for b in buckets}
     spokes = sorted(
         (
             {
                 "label": name,
-                "value": counts.get(name, 0),
+                "value": by_name.get(name, {}).get("n", 0),
                 "key": name,
                 "color": color_of(name),
+                "tags": by_name.get(name, {}).get("tags", []),
+                "records": by_name.get(name, {}).get("records", []),
             }
             for name in domains
         ),
@@ -431,9 +435,43 @@ def partial_records(request: Request, page: int = 1, sort: str = "time"):
     )
 
 
+# 正在生成思维导图的记录 id。单进程部署，用进程内集合足够；
+# 它只决定「页面上显示生成中还是空的」，重启丢一个标记不影响数据。
+_MM_BUILDING: set[int] = set()
+
+
+def _build_mindmap_bg(doc_id: int, user_id: int) -> None:
+    try:
+        mindmap.build(user_id, doc_id, force=True)
+    finally:
+        _MM_BUILDING.discard(doc_id)
+
+
+@app.get("/mindmap/{doc_id}/state")
+def mindmap_state(request: Request, doc_id: int):
+    """给导图页轮询用：还在生成吗、出结果了吗。
+
+    这里也要校验归属：只判登录的话，登录用户能用任意 id 探测
+    别人有没有导图、是不是正在生成 —— 虽然拿不到内容，但没必要开这个口子。
+    """
+    user = auth.current_user(request)
+    if not user:
+        return {"building": False, "ready": False}
+    if not db.one("SELECT id FROM documents WHERE id = ? AND user_id = ?", (doc_id, user["id"])):
+        return {"building": False, "ready": False}
+    return {
+        "building": doc_id in _MM_BUILDING,
+        "ready": mindmap.load(doc_id) is not None,
+    }
+
+
 @app.get("/mindmap/{doc_id}", response_class=HTMLResponse)
-def mindmap_page(request: Request, doc_id: int, rebuild: int = 0):
-    """一份资料自己的思维导图：主题在一层、要点在二层，横向展开。"""
+def mindmap_page(request: Request, background: BackgroundTasks, doc_id: int, rebuild: int = 0):
+    """一份资料自己的思维导图：主题在一层、要点在二层，横向展开。
+
+    生成一次要一分钟上下（四千多字的结构化 JSON），放在请求里同步等，
+    浏览器先超时了。改成排队到后台，页面自己轮询状态。
+    """
     user = auth.current_user(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
@@ -446,14 +484,18 @@ def mindmap_page(request: Request, doc_id: int, rebuild: int = 0):
 
     tree = mindmap.load(doc_id)
     error = ""
-    if rebuild or not tree:
+    if rebuild:
         if not llm.available():
             error = "没有配置模型密钥，暂时生成不了思维导图。"
-        else:
-            tree = mindmap.build(user["id"], doc_id, force=bool(rebuild))
-            if not tree:
-                error = "这次没能抽出结构，换一份资料或稍后再试。"
+        elif doc_id not in _MM_BUILDING:
+            _MM_BUILDING.add(doc_id)
+            background.add_task(_build_mindmap_bg, doc_id, user["id"])
+        return RedirectResponse(f"/mindmap/{doc_id}", status_code=303)
 
+    if not tree and not llm.available():
+        error = "没有配置模型密钥，暂时生成不了思维导图。"
+
+    building = doc_id in _MM_BUILDING
     chart = mindmap.layout(tree) if tree else None
     return TEMPLATES.TemplateResponse(
         request,
@@ -464,6 +506,7 @@ def mindmap_page(request: Request, doc_id: int, rebuild: int = 0):
             "tree": tree,
             "chart": chart,
             "error": error,
+            "building": building,
             "kinds": ingest.KINDS,
         },
     )
@@ -481,6 +524,10 @@ def kg_page(
     kind = kind if kind in ingest.KINDS else "course"
     tag = tag.strip()
 
+    # 先看这个标签下到底有没有记录：rows 为空有两种原因 ——
+    # 标签下没有记录（该去补标签），或记录还没生成过章节（该点生成），
+    # 不区分开，用户只会看到同一句「还没有生成结构」。
+    scope = kg.docs_in_tag(user["id"], kind, tag or None)
     rows = kg.load(user["id"], kind, tag or None)
     chapters = len({r["chapter"] for r in rows})
     seen: list[str] = []
@@ -489,8 +536,14 @@ def kg_page(
             if c not in seen:
                 seen.append(c)
 
-    # 课程/标签选择器：把「哪几门课」说清楚，别把所有课程混在一张图上
-    folders = tag_folders(user["id"], kind=kind)[:12]
+    # 课程/标签选择器：把「哪几门课」说清楚，别把所有课程混在一张图上。
+    # 当前标签若排在第 12 名之后，要单独补进来，否则页面上看不出自己站在哪。
+    folders = tag_folders(user["id"], kind=kind)
+    head = folders[:12]
+    if tag and all(f["name"] != tag for f in head):
+        cur = next((f for f in folders if f["name"] == tag), {"name": tag, "n": len(scope)})
+        head = head + [cur]
+    folders = head
 
     return TEMPLATES.TemplateResponse(
         request,
@@ -500,12 +553,15 @@ def kg_page(
             "kind": kind,
             "tag": tag,
             "center": tag or ingest.KINDS[kind],
+            "graph_label": ingest.GRAPH_LABEL.get(kind, "知识图谱"),
             "rows": rows,
+            "scope_total": len(scope),
             "chapters": chapters,
             "concepts": seen[:24],
             "graph": kg.layout(rows) if rows else None,
             "folders": folders,
-            "built": {"ok": ok, "failed": fail} if built else None,
+            "built": {"ok": ok, "failed": fail, "skipped": max(0, len(scope) - ok - fail)}
+            if built else None,
             "build_error": err,
             "kinds": ingest.KINDS,
         },
@@ -600,7 +656,8 @@ def search_page(request: Request, q: str = "", kind: str = "", frm: str = "", to
 
 @app.get("/doc/{doc_id}", response_class=HTMLResponse)
 def doc_page(request: Request, doc_id: int, cid: int | None = None, card_msg: str = "", card_ok: int = 0,
-             saved: int = 0, quick: int = 0, note: str = "", img: str = "", why: str = ""):
+             saved: int = 0, quick: int = 0, note: str = "", img: str = "", why: str = "",
+             hl: str = "", origin: str = Query("", alias="from")):
     user = auth.current_user(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
@@ -614,6 +671,21 @@ def doc_page(request: Request, doc_id: int, cid: int | None = None, card_msg: st
            WHERE dt.document_id = ?""",
         (doc_id,),
     )
+    # 「返回」要回到用户来的地方。从要点卡点进来却跳回概览，
+    # 等于把人丢回起点，还得重新点一遍卡片。来处由入口链接用 ?from= 带过来，
+    # 白名单之外一律按概览处理，免得被外部链接塞任意地址。
+    origin = (origin or "").strip().lower()
+    if origin == "cards":
+        back_href, back_label = "/cards", "返回要点卡"
+    elif origin == "search":
+        back_href, back_label = "/search", "返回检索"
+    elif origin == "interview":
+        back_href, back_label = "/interview", "返回面试预演"
+    elif origin == "category":
+        back_href, back_label = f"/c/{doc['kind']}", f"返回{ingest.KINDS.get(doc['kind'], '列表')}"
+    else:
+        back_href, back_label = "/", "返回概览"
+
     cards = db.rows("SELECT * FROM cards WHERE document_id = ?", (doc_id,))
     files = images.list_for(doc_id)
     has_redraw = any(f["role"] == "redrawn" for f in files)
@@ -631,6 +703,27 @@ def doc_page(request: Request, doc_id: int, cid: int | None = None, card_msg: st
                 body_html = body_html.replace(
                     needle, f'<mark id="cited">{needle}</mark>', 1
                 )
+
+    # 思维导图点节点会带 ?hl=原文片段：把这一段标出来并滚到它那儿。
+    # 片段来自模型摘录，可能与正文差一个空格或标点，所以按空白宽松匹配，
+    # 找不到就退化成「只按前 10 个字找」，再不行就当普通打开、不报错。
+    anchored = False
+    if hl.strip():
+        plain = html_lib.escape(hl.strip()[:40])
+        pattern = r"\s+".join(re.escape(p) for p in plain.split())
+        m = re.search(pattern, body_html)
+        if not m and len(plain) > 10:
+            head = html_lib.escape(hl.strip()[:10])
+            m = re.search(r"\s+".join(re.escape(p) for p in head.split()), body_html)
+        if m:
+            body_html = (
+                body_html[: m.start()]
+                + '<mark id="cited" class="doc-cited">'
+                + m.group(0)
+                + "</mark>"
+                + body_html[m.end():]
+            )
+            anchored = True
 
     # 文档内嵌图：正文里的 ⟦IMG:n⟧ 换成真实图片。
     # 在 escape 之后替换 —— 占位符全是普通字符，不会被转义，替换进去的 img 标签才不会被二次转义。
@@ -667,12 +760,38 @@ def doc_page(request: Request, doc_id: int, cid: int | None = None, card_msg: st
             "saved": saved,
             "quick": quick,
             "note": note,
+            "back_href": back_href,
+            "back_label": back_label,
             "files": files,
             "has_redraw": has_redraw,
             "img_state": img,
             "img_msg": why,
         },
     )
+
+
+@app.post("/card/{card_id}/delete")
+def delete_card(request: Request, card_id: int):
+    """删掉单张要点卡。
+
+    卡片是整条记录的产物，但一条记录提 3 张卡里常常只有 1 张不合用 ——
+    为删一张而重提整批太重。删卡不动记录本身，也不动其他卡。
+    """
+    user = auth.current_user(request)
+    if not user:
+        if _wants_json(request):
+            return JSONResponse({"ok": False, "error": "未登录"}, status_code=401)
+        return RedirectResponse("/login", status_code=303)
+    # 先查再删：db.execute 返回的是 lastrowid，DELETE 拿不到「删了几行」，
+    # 用它判断成功与否永远是 False —— 表现是接口一直回 404、前端提示删除失败。
+    if not db.one("SELECT id FROM cards WHERE id = ? AND user_id = ?", (card_id, user["id"])):
+        if _wants_json(request):
+            return JSONResponse({"ok": False, "error": "没有这张卡"}, status_code=404)
+        return RedirectResponse("/cards", status_code=303)
+    db.execute("DELETE FROM cards WHERE id = ? AND user_id = ?", (card_id, user["id"]))
+    if _wants_json(request):
+        return JSONResponse({"ok": True})
+    return RedirectResponse("/cards", status_code=303)
 
 
 @app.post("/doc/{doc_id}/cards")
@@ -795,6 +914,24 @@ def _ocr_inline_images(doc_id: int, items: list[tuple[int, bytes]]) -> None:
     ingest.refresh_body(doc_id, body)
 
 
+def _polish_text(doc_id: int, raw: str) -> None:
+    """后台把排版稿（Markdown / 纯文本）转写成自然语言。
+
+    为什么不在上传请求里做：三千字的 Markdown 分三块并发调模型也要 30 秒，
+    让用户在上传页干等不如先给一版本地清洗的正文 —— 符号已经去掉、检索已经能用，
+    模型版改完直接替换正文并重建索引，刷新即可看到。
+    """
+    if not llm.available():
+        return
+    row = db.one("SELECT title, body FROM documents WHERE id = ?", (doc_id,))
+    if not row:
+        return
+    body, _note = prose.to_prose(raw, row["title"])
+    if not body.strip() or body.strip() == (row["body"] or "").strip():
+        return
+    ingest.refresh_body(doc_id, body)
+
+
 @app.post("/upload")
 async def upload_file(
     request: Request,
@@ -803,6 +940,7 @@ async def upload_file(
     kind: str = Form("course"),
     title: str = Form(""),
     period: str = Form(""),
+    tags: str = Form(""),
     image_mode: str = Form("original"),
 ):
     """文件 / 图片导入。
@@ -828,7 +966,7 @@ async def upload_file(
 
     data = await file.read()
     try:
-        text, note, pics = importers.extract(file.filename or "", data)
+        text, note, pics, pending = importers.extract(file.filename or "", data)
     except importers.ExtractError as exc:
         return RedirectResponse(
             f"/new?kind={kind}&err={quote(str(exc))}", status_code=303
@@ -853,8 +991,16 @@ async def upload_file(
     doc_id = ingest.ingest_document(
         user["id"], title, text, kind=kind, period=period.strip() or None, source_kind="file"
     )
+    # 标签原来只走「粘贴文本」那条路，上传文件永远没有标签 ——
+    # 后果是按标签分组的收藏夹、知识图谱、按标签检索全都看不到这些记录。
+    if tags.strip():
+        ingest.add_tags(doc_id, user["id"], [t for t in tags.replace("，", ",").split(",")])
 
     extra = ""
+    if pending and pending.get("raw"):
+        # 文本类资料的「转写成自然语言」放到后台：本地清洗版已经在库里、能检索，
+        # 模型版改完直接替换正文并重建索引，用户不用在上传页等半分钟。
+        background.add_task(_polish_text, doc_id, pending["raw"])
     if suffix in importers.IMAGE_EXT:
         images.save_bytes(doc_id, data, suffix, role="original")
         if image_mode == "redraw":
@@ -891,8 +1037,8 @@ async def upload_file(
 @app.post("/new")
 def new_document(
     request: Request,
-    title: str = Form(...),
-    body: str = Form(...),
+    title: str = Form(""),
+    body: str = Form(""),
     kind: str = Form("course"),
     period: str = Form(""),
     tags: str = Form(""),
@@ -945,9 +1091,9 @@ def edit_page(request: Request, doc_id: int):
 def edit_submit(
     request: Request,
     doc_id: int,
-    title: str = Form(...),
-    body: str = Form(...),
-    kind: str = Form(...),
+    title: str = Form(""),
+    body: str = Form(""),
+    kind: str = Form(""),
     period: str = Form(""),
     tags: str = Form(""),
 ):
@@ -979,21 +1125,73 @@ def edit_submit(
     return RedirectResponse(f"/doc/{doc_id}?saved=1", status_code=303)
 
 
+@app.get("/interview", response_class=HTMLResponse)
+def interview_index(request: Request, sort: str = "time", tag: str = ""):
+    """面试预演的入口：先挑一条记录，再开始预演。
+
+    这个功能一直存在（`/doc/{id}/interview`），但只有记录详情页右上角一个小按钮，
+    侧栏没有入口 —— 用的人自然以为它被删了。
+
+    排序与分类页同一套口径（最新 / 最早 / 按标签）：
+    记录一多，一个平铺列表就只是在滚，找不到想练的那一条。
+    """
+    user = auth.current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+
+    if sort not in ("time", "time_asc", "tag"):
+        sort = "time"
+    tag = tag.strip()
+
+    folders: list[dict] = []
+    if sort == "tag" and not tag:
+        folders = tag_folders(user["id"])
+        docs: list[dict] = []
+    else:
+        docs = browse(
+            user["id"], limit=60, tag=tag or None,
+            sort="time" if sort == "tag" else sort,
+        )
+
+    return TEMPLATES.TemplateResponse(
+        request,
+        "interview_list.html",
+        {
+            "user": user,
+            "docs": docs,
+            "folders": folders,
+            "sort": sort,
+            "tag": tag,
+            "total": len(docs),
+            "kinds": ingest.KINDS,
+            "web_ready": websearch.available(),
+            "web_provider": config.SEARCH_PROVIDER,
+        },
+    )
+
+
 @app.get("/doc/{doc_id}/interview", response_class=HTMLResponse)
 def interview_page(request: Request, doc_id: int):
+    """预演页。有上次的结果就直接摆出来，不让人干等 20 秒。"""
     user = auth.current_user(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
     doc = db.one("SELECT * FROM documents WHERE id = ? AND user_id = ?", (doc_id, user["id"]))
     if not doc:
         return RedirectResponse("/", status_code=303)
+    cached = interview.load_cached(user["id"], doc)
+    if cached:
+        cached["cached"] = True
     return TEMPLATES.TemplateResponse(
-        request, "interview.html", {"user": user, "doc": doc, "result": None, "error": None}
+        request,
+        "interview.html",
+        {"user": user, "doc": doc, "result": cached, "error": None},
     )
 
 
 @app.post("/doc/{doc_id}/interview", response_class=HTMLResponse)
-def interview_run(request: Request, doc_id: int):
+def interview_run(request: Request, doc_id: int, force: int = Form(0)):
+    """生成预演题目。force=1 走「换一批」，忽略缓存重新生成。"""
     user = auth.current_user(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
@@ -1001,7 +1199,7 @@ def interview_run(request: Request, doc_id: int):
     if not doc:
         return RedirectResponse("/", status_code=303)
 
-    res = interview.prepare(user["id"], doc_id)
+    res = interview.prepare(user["id"], doc_id, force=bool(force))
     return TEMPLATES.TemplateResponse(
         request,
         "interview.html",
@@ -1014,18 +1212,55 @@ def interview_run(request: Request, doc_id: int):
     )
 
 
+def _wants_json(request: Request) -> bool:
+    """前端用 fetch 调接口时带这个头，用来区分「页面表单提交」和「脚本调用」。
+
+    同一个接口两种出口：从列表右键删除，原地移掉那张卡、不刷新页面；
+    从编辑页的按钮走普通表单，仍然整页跳回概览。
+    """
+    return request.headers.get("x-requested-with", "").lower() == "fetch"
+
+
 @app.post("/doc/{doc_id}/delete")
 def delete_document(request: Request, doc_id: int):
     user = auth.current_user(request)
     if not user:
+        if _wants_json(request):
+            return JSONResponse({"ok": False, "error": "未登录"}, status_code=401)
         return RedirectResponse("/login", status_code=303)
-    ingest.delete_document(user["id"], doc_id)
+    ok = ingest.delete_document(user["id"], doc_id)
+    if _wants_json(request):
+        return JSONResponse({"ok": ok}, status_code=200 if ok else 404)
     return RedirectResponse("/?deleted=1", status_code=303)
+
+
+@app.post("/docs/bulk-delete")
+async def bulk_delete(request: Request):
+    """列表里多选后一次删掉。
+
+    逐条走 delete_document（而不是一条 SQL 删多行），是因为它还要清切片、
+    删磁盘图片、让向量缓存失效 —— 绕开它就会留下孤儿文件。
+    """
+    user = auth.current_user(request)
+    if not user:
+        return JSONResponse({"ok": False, "error": "未登录"}, status_code=401)
+    try:
+        payload = await request.json()
+    except Exception:  # noqa: BLE001 空 body / 非 JSON 都当没选
+        payload = {}
+    ids = []
+    for raw in (payload.get("ids") or [])[:100]:
+        try:
+            ids.append(int(raw))
+        except (TypeError, ValueError):
+            continue
+    done = sum(1 for i in ids if ingest.delete_document(user["id"], i))
+    return JSONResponse({"ok": True, "deleted": done})
 
 
 # ---------------- 快速捕获 ----------------
 @app.post("/quick")
-def quick_capture(request: Request, text: str = Form(...), kind: str = Form("course")):
+def quick_capture(request: Request, text: str = Form(""), kind: str = Form("course")):
     """一句话先记下来，细节稍后补。降低录入门槛的关键。"""
     user = auth.current_user(request)
     if not user:
@@ -1085,24 +1320,17 @@ def category_page(
 
     label_set = list(ingest.KINDS.values())
     ph = ",".join("?" for _ in label_set)
-    # 计数必须与筛选口径一致：点标签时只按「主标签」匹配，
-    # 所以这里也只能数「这条记录的主标签是这个标签」的次数。
-    # 之前数的是全部关联关系，一条记录挂 3 个标签就被数了 3 次，
-    # 于是标签上写 3 条、点进去只有 1 条。
+    # 计数与筛选同口径：数「挂着这个标签的记录数」，筛选也按任意标签命中。
+    # 早先两边都只认主标签，数字能对上，但次标签在界面上等于不存在。
     tag_rows = db.rows(
-        f"""SELECT t.name AS name, COUNT(*) AS n
+        f"""SELECT t.name AS name, COUNT(DISTINCT d.id) AS n
             FROM tags t
             JOIN document_tags dt ON dt.tag_id = t.id
             JOIN documents d ON d.id = dt.document_id
             WHERE d.user_id = ? AND d.kind = ?
               AND t.name NOT IN ({ph})
-              AND dt.tag_id = (
-                  SELECT MIN(dt2.tag_id)
-                  FROM document_tags dt2 JOIN tags t2 ON t2.id = dt2.tag_id
-                  WHERE dt2.document_id = d.id AND t2.name NOT IN ({ph})
-              )
-            GROUP BY t.name ORDER BY n DESC, t.name LIMIT 14""",
-        (user["id"], kind, *label_set, *label_set),
+            GROUP BY t.name ORDER BY n DESC, t.name LIMIT 16""",
+        (user["id"], kind, *label_set),
     )
     card_count = db.one(
         """SELECT COUNT(*) AS n FROM cards c JOIN documents d ON d.id = c.document_id
@@ -1124,6 +1352,7 @@ def category_page(
             "user": user,
             "kind": kind,
             "kind_label": ingest.KINDS[kind],
+            "graph_label": ingest.GRAPH_LABEL.get(kind, "知识图谱"),
             "items": items,
             "page": page,
             "pages": pages,
@@ -1215,7 +1444,13 @@ def match_page(request: Request):
 
 
 @app.post("/match", response_class=HTMLResponse)
-def match_submit(request: Request, jd: str = Form(...)):
+def match_submit(request: Request, jd: str = Form("")):
+    """岗位匹配。
+
+    jd 用默认值而不是 Form(...)：空表单声明为必填时，FastAPI 会回 422 并落到
+    通用错误页，用户只看到「请求出错了」，不知道是该填内容。
+    留空交给 match.analyze 判「太短」，页面会给出人话。
+    """
     user = auth.current_user(request)
     if not user:
         return RedirectResponse("/login", status_code=303)

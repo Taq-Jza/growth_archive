@@ -31,6 +31,14 @@
       <input name="title" placeholder="标题（留空则用文件名）"
              class="field w-full">
 
+      <div>
+        <input name="tags" placeholder="标签，用逗号分隔，例如「大学物理」「期中复习」"
+               class="field w-full">
+        <p class="mt-1 text-[11px] text-[var(--ink-4)]">
+          标签决定这份资料归到哪个收藏夹，也是知识图谱「按课程查看」的依据。
+        </p>
+      </div>
+
       <label class="block rounded-lg border border-dashed border-[rgba(26,29,25,.16)] bg-[rgba(250,250,248,1)] px-4 py-6 text-center text-sm text-[var(--ink-3)]">
         <input type="file" name="file" required
                accept=".txt,.md,.markdown,.docx,.pdf,.png,.jpg,.jpeg,.webp,.bmp"
@@ -107,3 +115,5 @@
 </div>
 
 {% endblock %}
+
+{% block footer_note %}md / docx / pdf / 图片都能传；图片里的字会被读出来，跟着一起进检索。{% endblock %}

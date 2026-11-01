@@ -151,9 +151,16 @@ def chat_stream(
         raise LLMUnavailable(str(exc)[:200]) from exc
 
 
-def chat_json(messages: list[dict], timeout: float | None = None) -> dict | None:
-    """要求模型返回 JSON，解析失败返回 None（由调用方决定重试或降级）。"""
-    raw = chat(messages, temperature=0.0, timeout=timeout)
+def chat_json(
+    messages: list[dict], timeout: float | None = None, max_tokens: int = 1200
+) -> dict | None:
+    """要求模型返回 JSON，解析失败返回 None（由调用方决定重试或降级）。
+
+    max_tokens 要由调用方按输出规模给：思维导图那种多节点嵌套的 JSON 有四千多字，
+    沿用 chat() 的默认值会在半截被截断，解析出来是 None ——
+    表现成「生成失败」，但日志里没有任何异常，最难查。
+    """
+    raw = chat(messages, temperature=0.0, timeout=timeout, max_tokens=max_tokens)
     raw = raw.strip()
     if raw.startswith("```"):
         raw = raw.strip("`")

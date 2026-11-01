@@ -51,6 +51,28 @@
 | T-39 | 点击粒子反馈 | 全局 | `templates/base.html` | 导航与按钮同色板粒子，尊重减弱动效 | 已完成 |
 | T-40 | 文档内嵌图保留 | F-11 | `app/importers.py` `app/images.py` `app/main.py` `app/db.py` | 按序抽图、占位入库、后台补 OCR、删记录清文件 | 已完成 |
 | T-41 | 单份资料思维导图 | F-15 | `app/mindmap.py` `templates/mindmap.html` | 两层树、本地布局、落库缓存、按课程筛选图谱 | 已完成 |
+| T-42 | 文本类资料自然语言化 | F-11 | `app/prose.py` `app/importers.py` | 两级清洗、LaTeX 转可读符号、后台转写、75% 质量闸门 | 已完成 |
+| T-43 | 导图节点带解释与原文定位 | F-15 | `app/mindmap.py` `templates/mindmap.html` | `detail`/`quote` 字段、点击跳原文高亮、完整要点清单 | 已完成 |
+| T-44 | 上传表单补标签 | F-14 | `templates/new.html` `app/main.py` | 上传可填标签、图谱按标签范围与未分章提示 | 已完成 |
+| T-45 | 侧栏折叠与「继续上次」 | 全局 | `templates/base.html` `templates/home.html` | 图标/图文两档、localStorage 记忆、首屏前置；首页回跳上次内页 | 已完成 |
+| T-46 | 卡片右键菜单与多选 | F-01 | `templates/base.html` `_records.html` `_cat_body.html` | 查看/编辑/删除/多选、居中确认弹窗、批量删除接口 | 已完成 |
+| T-47 | 要点卡整卡可点、图谱分类命名 | F-05/F-14 | `templates/cards.html` `app/ingest.py` | 整卡跳转（复制按钮除外）；五种图谱名称 | 已完成 |
+| T-48 | 面试预演入口与联网检索 | F-09 | `app/websearch.py` `templates/interview_list.html` | 侧栏入口+记录列表；bocha/serper/tavily 适配，失败降级 | 已完成 |
+| T-49 | 返回链接按来处 | 全局 | `app/main.py` `templates/doc.html` | `?from=` 白名单映射返回目标与文案，未知名回落概览 | 已完成 |
+| T-50 | 面试入口页排序与标签 | F-09 | `app/main.py` `templates/interview_list.html` | 最新/最早/按标签，标签文件夹视图 | 已完成 |
+| T-51 | 修复侧栏 sticky 失效 | 全局 | `templates/base.html` | 去掉覆盖 `md:sticky` 的 `position:relative` | 已完成 |
+| T-52 | 环形图改按记录类型 | F-12 | `app/main.py` `templates/home.html` | 五分类图例、点图例跳分类、标题改「内容构成」 | 已完成 |
+| T-53 | 能力域兜底与专业基础 | F-12 | `app/search.py` `data/capability_map.json` | 标题关键词兜底、新增专业基础域、补第 7 色 | 已完成 |
+| T-54 | 首页要点卡标签配色 | F-05 | `templates/home.html` | 改回按分类着色，与要点卡页一致 | 已完成 |
+| T-55 | 修复雷达图点轴不下钻 | F-12 | `app/main.py` `templates/home.html` | spokes 带 tags/records；`openDetail` 同时查 SECTORS 与 RADAR；记录类型直接跳分类页 | 已完成 |
+| T-56 | 页脚按页面给信息 | 全局 | `templates/base.html` + 14 个模板 | `footer_note` 块覆盖；带本页真实数字；空态另给说法 | 已完成 |
+| T-57 | 表单留空不再 422 | F-01/F-09/F-12/F-13 | `app/main.py` | `Form(...)` 改默认空串，走各自业务校验回页面提示 | 已完成 |
+| T-58 | 导图状态接口补归属校验 | F-15 | `app/main.py` | `/mindmap/{id}/state` 校验记录属于当前用户 | 已完成 |
+| T-59 | 标签改为任意标签命中 | F-12 | `app/search.py` `app/kg.py` `app/main.py` | 筛选/计数/文件夹/图谱统一口径；能力域仍按主标签 | 已完成 |
+| T-60 | 删除反馈改为轻提示 | 全局 | `templates/base.html` `templates/*.html` | `toast()` + `window.__flash`，替换首页顶部静态提示 | 已完成 |
+| T-61 | 触屏长按弹出菜单 | 全局 | `templates/base.html` | 500ms 长按、移动 10px 取消、拦截补发的 click | 已完成 |
+| T-62 | 要点卡单张删除 | F-06 | `app/main.py` `templates/cards.html` | `/card/{id}/delete`；卡片按钮、原地移除、计数减一 | 已完成 |
+| T-63 | 面试预演结果缓存 | F-09 | `app/interview.py` `app/db.py` `templates/interview.html` | `interview_cache` 表、body_hash 失效、换一批按钮 | 已完成 |
 
 ---
 

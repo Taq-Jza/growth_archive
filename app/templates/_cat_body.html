@@ -77,7 +77,7 @@
         <circle cx="12" cy="5" r="2.2"/><circle cx="5.5" cy="17" r="2.2"/><circle cx="18.5" cy="17" r="2.2"/>
         <path d="M10.3 6.7 7 15M13.7 6.7 17 15M7.7 17h8.6"/>
       </svg>
-      知识图谱
+      {{ graph_label }}
     </a>
     <a href="/c/{{ kind }}" data-body class="text-[var(--brand)] hover:underline">看全部记录</a>
   </div>
@@ -189,8 +189,11 @@
 <section class="mt-4">
   <ul class="space-y-2">
     {% for it in items %}
-    <li class="card card-hover rec-in" data-anim="{{ 'right' if loop.index0 is odd else 'left' }}" style="--d:{{ (loop.index0 % 8) * 0.045 }}s">
-      <a href="/doc/{{ it.document_id }}" class="group flex min-w-0 items-start gap-3 px-4 py-3">
+    <li class="card card-hover rec-in rec-card"
+        data-doc-id="{{ it.document_id }}" data-doc-title="{{ it.title }}"
+        data-doc-edit="/doc/{{ it.document_id }}/edit"
+        data-anim="{{ 'right' if loop.index0 is odd else 'left' }}" style="--d:{{ (loop.index0 % 8) * 0.045 }}s">
+      <a href="/doc/{{ it.document_id }}?from=category" class="group flex min-w-0 items-start gap-3 px-4 py-3">
         <span class="mt-1.5 h-2 w-2 shrink-0 rounded-full transition-transform duration-200 group-hover:scale-125"
               style="background:{{ color }}"></span>
         <span class="min-w-0 flex-1">

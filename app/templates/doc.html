@@ -4,9 +4,9 @@
 {% set KC = KCOLORS %}
 {% set color = KC.get(doc.kind, '#999') %}
 
-<a href="/" class="group inline-flex items-center gap-1 text-xs text-[var(--ink-3)] transition-colors duration-200 hover:text-[var(--brand-deep)]">
+<a href="{{ back_href }}" class="group inline-flex items-center gap-1 text-xs text-[var(--ink-3)] transition-colors duration-200 hover:text-[var(--brand-deep)]">
   <span class="arrow inline-block rotate-180 transition-transform duration-200 group-hover:-translate-x-1">→</span>
-  返回概览
+  {{ back_label }}
 </a>
 
 <div class="mt-3 flex items-start justify-between gap-4 reveal" data-anim="left">
@@ -203,3 +203,5 @@
 {% endif %}
 
 {% endblock %}
+
+{% block footer_note %}{{ doc.body|length }} 字{% if cards %} · {{ cards|length }} 张要点卡{% endif %}。顶部的返回会回到你来的那一页。{% endblock %}

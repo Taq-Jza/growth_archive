@@ -19,6 +19,16 @@ KINDS = {
     "trait": "特长",
 }
 
+# 各分类的图谱叫法。一律叫「知识图谱」的话，技能、竞赛这些页面会显得没区别 ——
+# 它们组织结构的逻辑本来就不一样：课程按章节，技能按能力项，竞赛按时间线。
+GRAPH_LABEL = {
+    "course": "知识图谱",
+    "skill": "技能图谱",
+    "award": "竞赛图谱",
+    "project": "项目图谱",
+    "trait": "特长图谱",
+}
+
 
 def _index_document(doc_id: int, title: str, body: str, now: str) -> None:
     """为文档重建切片与全文索引（调用前须已清空旧数据）。"""

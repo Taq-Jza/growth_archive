@@ -25,6 +25,13 @@ IMAGE_SIZE = os.getenv("IMAGE_SIZE", "1024x768")
 IMAGE_REDRAW = os.getenv("IMAGE_REDRAW", "typeset")
 LLM_TIMEOUT = float(os.getenv("LLM_TIMEOUT", "30"))
 
+# ---- 联网检索（面试预演的可选增强）----
+# 不填就只用模型自带知识；填了就把近期真题当作「出题方向」注入提示词。
+# 支持 bocha / serper / tavily，见 app/websearch.py
+SEARCH_PROVIDER = os.getenv("SEARCH_PROVIDER", "")
+SEARCH_API_KEY = os.getenv("SEARCH_API_KEY", "")
+SEARCH_TIMEOUT = float(os.getenv("SEARCH_TIMEOUT", "8"))
+
 # ---- 应用 ----
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-please-change")
 DEMO_EMAIL = os.getenv("DEMO_EMAIL", "demo@local")
