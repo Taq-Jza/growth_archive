@@ -525,7 +525,7 @@
     }
   </style>
 </head>
-<body{% block body_attrs %}{% endblock %}>
+<body {% block body_attrs %}{% endblock %}>
 
 <div id="routebar"></div>
 
@@ -1154,6 +1154,18 @@
     return true;
   };
 
+  /* 删除后顺手清「继续上次」：恢复入口指向已删的记录，点过去只会撞错误页。
+     记录的各个内页（详情 / 编辑 / 面试 / 导图）都以 id 为路径段，一并匹配。 */
+  const DOC_PATH_RE = (id) => new RegExp('^/(doc|mindmap)/' + id + '(/|$)');
+  const clearResume = (ids) => {
+    try {
+      const v = JSON.parse(localStorage.getItem('ga-last-visit') || 'null');
+      if (v && v.path && ids.some((id) => DOC_PATH_RE(String(id)).test(v.path))) {
+        localStorage.removeItem('ga-last-visit');
+      }
+    } catch (err) {}
+  };
+
   // 服务端渲染时把要提示的话放进 window.__flash，这里统一弹
   if (window.__flash) {
     const f = window.__flash;
@@ -1294,6 +1306,7 @@
       });
       if (!r.ok) throw new Error(r.status);
       dropCard(card);
+      clearResume([id]);
       const text = '已删除「' + (title.length > 16 ? title.slice(0, 16) + '…' : title) + '」';
       // 概览这类带聚合数据的页：软刷新让数字和图表当场对上；其余页只弹提示
       if (!softRefresh({ text, type: 'ok' })) window.toast(text);
@@ -1319,6 +1332,7 @@
         body: JSON.stringify({ ids: cards.map((c) => Number(c.dataset.docId)) }),
       });
       if (!r.ok) throw new Error(r.status);
+      clearResume(cards.map((c) => c.dataset.docId));
       cards.forEach(dropCard);
       exitSelect();
       const text = '已删除 ' + cards.length + ' 条记录';
