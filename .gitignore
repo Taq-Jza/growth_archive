@@ -26,3 +26,27 @@ memory/
 run-logs/
 artifacts/
 env-backup/
+
+# ---- 依赖与构建产物 ----
+node_modules/
+*.egg-info/
+dist/
+build/
+
+# ---- 测试与类型检查缓存 ----
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ---- 本地配置变体（.env.example 要保留）----
+.env.local
+.env.*.local
+
+# ---- 系统与归档文件 ----
+Thumbs.db
+*.log
+*.zip
+*.tar.gz
+
