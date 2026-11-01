@@ -1,0 +1,11 @@
+执行：录入一条正文含唯一标记「日志探针7f3a9c」的记录（doc 132），再访问该记录与检索页，随后 grep 服务日志。
+日志文件：Temp/logs/uvicorn-8000.log（uvicorn 标准输出，共 14 行，其中请求行 4 行）
+正文标记「日志探针7f3a9c」出现次数：0
+正文其余句子（「这段文字只用于验证日志不会记录正文内容」）出现次数：0
+日志内容构成：启动信息 + 请求行（方法/路径/状态码）+ jieba 词典加载提示
+最近 3 行：
+  Loading model cost 0.599 seconds.
+  Prefix dict has been built successfully.
+  INFO:     127.0.0.1:63555 - "GET /search?q=%E6%97%A5%E5%BF%97 HTTP/1.1" 200 OK
+补充：app/*.py 中没有 logging / print 调用（grep 结果为空），不存在把正文写进日志的代码路径。
+判定：通过

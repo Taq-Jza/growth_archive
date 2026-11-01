@@ -1075,7 +1075,7 @@ def new_document(
     request: Request,
     title: str = Form(""),
     body: str = Form(""),
-    kind: str = Form("course"),
+    kind: str = Form(""),
     period: str = Form(""),
     tags: str = Form(""),
 ):

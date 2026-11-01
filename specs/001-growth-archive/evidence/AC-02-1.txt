@@ -1,0 +1,6 @@
+执行：POST /new（竞赛类型，正文 1200 字）
+响应：303 → /doc/128
+入库：document_id=128，正文长度=1200，切片数=4
+记录总数：24 → 25
+判定：通过
+命令：sqlite3 data/app.db "SELECT COUNT(*) FROM chunks WHERE document_id=128" → 4

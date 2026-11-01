@@ -1,0 +1,4 @@
+JD：容器平台运维（档案里没有 Kubernetes / Docker / 容器相关记录）
+识别出的缺口 3 项：熟悉 Kubernetes 集群管理与 Helm 部署；熟悉 Docker 镜像构建与容器编排；有 Prometheus 监控告警体系搭建经验
+覆盖缺口关键词：True；总分 0，判为不相关=True
+判定：通过

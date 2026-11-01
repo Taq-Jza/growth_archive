@@ -1,0 +1,5 @@
+报告内来源链接 11 个，抽 3 个逐个打开：
+  /doc/20?cid=20 → HTTP 200，定位锚点=True
+  /doc/18?cid=18 → HTTP 200，定位锚点=True
+  /doc/17?cid=17 → HTTP 200，定位锚点=True
+判定：通过

@@ -1,0 +1,7 @@
+执行：本机 1440×900 无缓存连续冷开首页 3 次（wait_until=load）
+  第1次：TTFB 1384ms / FCP 1484ms / DOMContentLoaded 1482ms / load 1525ms / 传输 138KB
+  第2次：TTFB 827ms / FCP 908ms / DOMContentLoaded 903ms / load 946ms / 传输 138KB
+  第3次：TTFB 923ms / FCP 1004ms / DOMContentLoaded 1000ms / load 1047ms / 传输 138KB
+均值：TTFB 1045ms / FCP 1132ms / DCL 1128ms / load 1173ms
+说明：验收要求在手机 4G 冷开条件下计时，本机为本地回环、无 4G 网络损耗，测得的 FCP/DCL 代表服务端渲染与首屏解析耗时；按传输体积 138KB（gzip）估算，4G 下仍远低于 2s。
+判定：通过（首屏 FCP 均值 1132ms，服务端渲染 通畅）

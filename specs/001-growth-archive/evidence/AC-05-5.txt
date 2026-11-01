@@ -1,0 +1,5 @@
+执行：构造越界引用（有效引用 3 条，文本含 [7] 与 [2]）
+invalid_markers → ['7']
+strip_invalid_markers → "结论见 ，另见 [2]。"
+判定：通过
+实现：rag.answer_stream 在 done 前调用（先让模型重写一次，仍越界则本地剔除），前端不会渲染出无效角标。

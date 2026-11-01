@@ -31,6 +31,20 @@ def invalid_markers(text: str, n: int) -> list[str]:
     return [m for m in found if not (1 <= int(m) <= n)]
 
 
+def strip_invalid_markers(text: str, n: int) -> str:
+    """把越界的引用标号从正文里摘掉。
+
+    模型偶尔会写出 [7] 这种不存在的出处，重试一次仍然越界时，
+    前端会把任何 [n] 都渲染成可点的角标 —— 点开却找不到出处，
+    比没有引用更伤。所以最后一道兜底放在服务端：越界的直接去掉。
+    """
+    return re.sub(
+        r"\[(\d{1,2})\]",
+        lambda m: m.group(0) if 1 <= int(m.group(1)) <= n else "",
+        text or "",
+    ).replace("  ", " ").strip()
+
+
 def rerank(question: str, candidates: list[dict], top_k: int = TOP_K) -> list[dict]:
     """模型重排。任何失败都退回召回顺序，绝不阻断问答。"""
     if len(candidates) <= top_k:
@@ -175,7 +189,7 @@ def answer_stream(user_id: int, question: str, top_k: int = TOP_K, kind: str | N
 
     text = "".join(buf).strip()
 
-    # 引用校验：出现越界标号则重试一次
+    # 引用校验：出现越界标号就重试一次；重试仍越界则本地摘掉，不让它露到页面上
     if invalid_markers(text, len(chunks)):
         try:
             fixed = llm.chat(
@@ -185,8 +199,11 @@ def answer_stream(user_id: int, question: str, top_k: int = TOP_K, kind: str | N
                 timeout=config.LLM_TIMEOUT,
             )
             if fixed and not invalid_markers(fixed, len(chunks)):
-                yield ("replace", {"text": fixed.strip()})
+                text = fixed.strip()
+                yield ("replace", {"text": text})
         except llm.LLMUnavailable:
             pass
+        if invalid_markers(text, len(chunks)):
+            yield ("replace", {"text": strip_invalid_markers(text, len(chunks))})
 
     yield ("done", {"citations": citations, "degraded": False, "mode": mode})

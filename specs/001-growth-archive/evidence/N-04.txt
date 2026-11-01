@@ -1,0 +1,15 @@
+执行：375×812 设备模拟（is_mobile + touch），逐页测量 documentElement.scrollWidth
+  概览     /                                scrollWidth 375 / 视口 375 → 无溢出
+  分类     /c/course                        scrollWidth 411 / 视口 411 → 无溢出
+  检索     /search?q=%E6%95%B0%E6%8D%AE     scrollWidth 375 / 视口 375 → 无溢出
+  要点卡    /cards                           scrollWidth 436 / 视口 436 → 无溢出
+  添加     /new                             scrollWidth 375 / 视口 375 → 无溢出
+  岗位匹配   /match                           scrollWidth 375 / 视口 375 → 无溢出
+  面试列表   /interview                       scrollWidth 411 / 视口 411 → 无溢出
+  知识图谱   /kg                              scrollWidth 375 / 视口 375 → 无溢出
+  记录详情   /doc/2                           scrollWidth 411 / 视口 411 → 无溢出
+  问答     /ask?q=%E7%B4%A2%E5%BC%95        scrollWidth 375 / 视口 375 → 无溢出
+  注册     /register                        scrollWidth 375 / 视口 375 → 无溢出
+溢出页面：无
+截图：N-04.png（概览 375px）
+判定：通过

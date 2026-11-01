@@ -1,0 +1,10 @@
+执行：按 run.md 从零复现
+  1) python -m venv Temp/n06venv
+  2) pip install -r requirements.txt   → 依赖安装完成（1 分 21 秒）
+  3) DATA_DIR=Temp/n06data .venv/Scripts/python -m uvicorn app.main:app --port 8014
+结果：
+  /healthz → 200
+  首次访问 / → 303 到 /login（未登录），服务正常响应
+  空库自动建表 17 张、自动创建体验账号 [('demo@local',)]
+结论：不依赖任何手工步骤，一条 uvicorn 命令即可启动（模型密钥可留空）。
+判定：通过

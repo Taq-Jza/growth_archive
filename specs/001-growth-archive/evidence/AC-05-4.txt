@@ -1,0 +1,7 @@
+执行：抽 5 条引用与 chunks.text 逐字比对
+  引用[1] chunk 18：字符串全等 = True
+  引用[2] chunk 9：字符串全等 = True
+  引用[3] chunk 15：字符串全等 = True
+  引用[4] chunk 22：字符串全等 = True
+  引用[5] chunk 10：字符串全等 = True
+判定：通过
