@@ -73,6 +73,7 @@
 | T-61 | 触屏长按弹出菜单 | 全局 | `templates/base.html` | 500ms 长按、移动 10px 取消、拦截补发的 click | 已完成 |
 | T-62 | 要点卡单张删除 | F-06 | `app/main.py` `templates/cards.html` | `/card/{id}/delete`；卡片按钮、原地移除、计数减一 | 已完成 |
 | T-63 | 面试预演结果缓存 | F-09 | `app/interview.py` `app/db.py` `templates/interview.html` | `interview_cache` 表、body_hash 失效、换一批按钮 | 已完成 |
+| T-64 | 自建账号 | F-01 | `app/auth.py` `app/main.py` `templates/register.html` `templates/login.html` | 注册页、邮箱唯一、口令校验、注册后直接登录；登录页加入口 | 已完成 |
 
 ---
 

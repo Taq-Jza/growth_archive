@@ -35,9 +35,15 @@
       <button class="btn btn-primary mt-5 w-full justify-center py-2.5">登录</button>
     </form>
 
-    <div class="mt-4 text-center fade-up" style="--d:.12s">
-      <a href="/demo" class="group inline-flex items-center gap-1 text-sm text-[var(--ink-3)] transition-colors duration-200 hover:text-[var(--brand-deep)]">
-        直接体验，不用注册
+    <div class="mt-5 flex flex-col items-center gap-2.5 text-center fade-up" style="--d:.12s">
+      {# 之前这里只有「直接体验」，没有注册入口 —— 新用户看到「请输入口令」
+         却没有任何地方能拿到口令，等于进不去。 #}
+      <a href="/register"
+         class="inline-flex items-center gap-1.5 rounded-full bg-white px-4 py-2 text-[13px] text-[var(--ink-2)] shadow-[inset_0_0_0_1px_rgba(26,29,25,.08)] transition-all duration-200 hover:-translate-y-px hover:text-[var(--brand-deep)] hover:shadow-[inset_0_0_0_1px_var(--brand-edge)]">
+        还没有账号？用邮箱创建一个
+      </a>
+      <a href="/demo" class="group inline-flex items-center gap-1 text-[12.5px] text-[var(--ink-4)] transition-colors duration-200 hover:text-[var(--brand-deep)]">
+        或者直接看体验账号，不用注册
         <span class="arrow inline-block opacity-0 transition-opacity group-hover:opacity-100">→</span>
       </a>
     </div>

@@ -743,4 +743,4 @@ else if (ZP.get('zoom') === 'detail') openDetail(parseInt(ZP.get('idx') || '0', 
 
 {% endblock %}
 
-{% block footer_note %}挑一条回看，比再记一条有用。{% endblock %}
+{% block footer_note %}{% if has_data %}挑一条回看，比再记一条有用。{% else %}档案是空的。先记一条，或者载入示例看看效果。{% endif %}{% endblock %}

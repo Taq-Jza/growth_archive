@@ -125,8 +125,44 @@ def healthz():
 
 
 # ---------------- 认证 ----------------
+@app.get("/register", response_class=HTMLResponse)
+def register_page(request: Request):
+    """自己建账号。
+
+    之前只有登录框没有注册入口，新用户拿到的是「请输入口令」——
+    口令从哪来没人说，等于进不去。体验账号是给评委一键看效果的，
+    不该是唯一入口。
+    """
+    if auth.current_user(request):      # 已经登录了就别再看注册页
+        return RedirectResponse("/", status_code=303)
+    return TEMPLATES.TemplateResponse(request, "register.html", {"error": None, "email": ""})
+
+
+@app.post("/register")
+def do_register(
+    request: Request,
+    email: str = Form(""),
+    password: str = Form(""),
+    password2: str = Form(""),
+):
+    email = (email or "").strip()
+    if password != password2:
+        return TEMPLATES.TemplateResponse(
+            request, "register.html", {"error": "两次输入的口令不一致", "email": email},
+            status_code=400,
+        )
+    user, err = auth.register_user(email, password)
+    if not user:
+        return TEMPLATES.TemplateResponse(
+            request, "register.html", {"error": err, "email": email}, status_code=400
+        )
+    return _set_session(RedirectResponse("/", status_code=303), user["id"])
+
+
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
+    if auth.current_user(request):      # 已登录还停在登录页，多半是点了旧链接
+        return RedirectResponse("/", status_code=303)
     return TEMPLATES.TemplateResponse(request, "login.html", {"error": None})
 
 
